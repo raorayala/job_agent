@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# Secrets & local config
+.env
+credentials.json
+token.json
+token.pickle
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Data (local application records stay on your machine)
+data/*.db
+data/cache/
+
+# Generated resumes (keep master resume in repo if you prefer)
+output/
+
+# OS
+.DS_Store
+Thumbs.db

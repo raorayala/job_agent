@@ -1,0 +1,44 @@
+# Job search agent configuration
+
+platforms:
+  ziprecruiter:
+    sender_domains: ["ziprecruiter.com", "notifications.ziprecruiter.com"]
+    link_patterns: ["ziprecruiter.com/jobs/"]
+  indeed:
+    sender_domains: ["indeed.com", "indeedemail.com"]
+    link_patterns: ["indeed.com/viewjob", "indeed.com/rc/clk"]
+  glassdoor:
+    sender_domains: ["glassdoor.com", "glassdoor.io"]
+    link_patterns: ["glassdoor.com/job-listing/"]
+  dice:
+    sender_domains: ["dice.com"]
+    link_patterns: ["dice.com/job-detail/"]
+  lensa:
+    sender_domains: ["lensa.com"]
+    link_patterns: ["lensa.com/jobs/"]
+
+# Keywords that boost relevance (edit to match your target roles)
+target_roles:
+  - software engineer
+  - python developer
+  - backend developer
+  - full stack
+
+target_skills:
+  - python
+  - sql
+  - api
+  - git
+  - docker
+  - aws
+
+# Application statuses tracked in the database
+application_statuses:
+  - discovered
+  - reviewed
+  - resume_tailored
+  - applied
+  - interview
+  - rejected
+  - offer
+  - withdrawn
