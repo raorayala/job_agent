@@ -1,44 +1,88 @@
-# Job search agent configuration
+# Job Search Agent configuration
+# Edit this file to match your career targets. Sensitive overrides can go in .env.
 
 platforms:
   ziprecruiter:
     sender_domains: ["ziprecruiter.com", "notifications.ziprecruiter.com"]
-    link_patterns: ["ziprecruiter.com/jobs/"]
+    link_patterns: ["ziprecruiter.com/jobs/", "ziprecruiter.com/ck/"]
   indeed:
     sender_domains: ["indeed.com", "indeedemail.com"]
-    link_patterns: ["indeed.com/viewjob", "indeed.com/rc/clk"]
+    link_patterns: ["indeed.com/viewjob", "indeed.com/rc/clk", "indeed.com/pagead/"]
   glassdoor:
     sender_domains: ["glassdoor.com", "glassdoor.io"]
-    link_patterns: ["glassdoor.com/job-listing/"]
+    link_patterns: ["glassdoor.com/job-listing/", "glassdoor.com/partner/"]
   dice:
     sender_domains: ["dice.com"]
-    link_patterns: ["dice.com/job-detail/"]
+    link_patterns: ["dice.com/job-detail/", "dice.com/jobs/detail/"]
   lensa:
     sender_domains: ["lensa.com"]
-    link_patterns: ["lensa.com/jobs/"]
+    link_patterns: ["lensa.com/jobs/", "lensa.com/job/"]
 
-# Keywords that boost relevance (edit to match your target roles)
-target_roles:
-  - software engineer
-  - python developer
-  - backend developer
-  - full stack
+# Candidate profile — customize before running analyze/tailor
+profile:
+  target_titles:
+    - Software Engineer
+    - Python Developer
+    - Backend Developer
+    - Full Stack Developer
+  industries:
+    - Software
+    - Technology
+    - SaaS
+  required_skills:
+    - Python
+    - SQL
+    - Git
+  preferred_skills:
+    - Docker
+    - AWS
+    - REST API
+    - FastAPI
+    - PostgreSQL
+  years_experience: 5
+  locations:
+    - Remote
+    - United States
+  work_modes:
+    - remote
+    - hybrid
+  salary_min: 100000
+  salary_max: 160000
+  salary_currency: USD
+  employment_types:
+    - full-time
+  work_authorization: "Authorized to work in the US"
+  excluded_companies: []
+  excluded_titles:
+    - intern
+    - unpaid
+  excluded_skills: []
+  excluded_locations: []
+  master_resume_path: null  # override via MASTER_RESUME_PATH in .env
+  cover_letter_template_path: null
 
-target_skills:
-  - python
-  - sql
-  - api
-  - git
-  - docker
-  - aws
+# Weighted match factors (must sum conceptually to explainable scoring)
+match_weights:
+  required_skills: 30
+  preferred_skills: 15
+  title_similarity: 20
+  experience_alignment: 10
+  location_work_mode: 15
+  salary_compatibility: 10
 
-# Application statuses tracked in the database
+# Application lifecycle statuses
 application_statuses:
-  - discovered
-  - reviewed
-  - resume_tailored
-  - applied
-  - interview
-  - rejected
-  - offer
-  - withdrawn
+  - Saved
+  - Reviewing
+  - Ready to apply
+  - Applied
+  - Interviewing
+  - Rejected
+  - Offer
+  - Withdrawn
+  - Archived
+
+# Duplicate detection thresholds
+duplicate:
+  title_similarity_threshold: 0.88
+  content_similarity_threshold: 0.90

@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "job-agent"
+version = "0.1.0"
+description = "Local-first AI job search agent: Gmail alerts, match scoring, resume tailoring, application tracking."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Local User" }]
+dependencies = [
+  "google-api-python-client>=2.100.0",
+  "google-auth-httplib2>=0.2.0",
+  "google-auth-oauthlib>=1.2.0",
+  "python-dotenv>=1.0.0",
+  "pyyaml>=6.0.1",
+  "beautifulsoup4>=4.12.0",
+  "lxml>=5.0.0",
+  "python-docx>=1.1.0",
+  "sqlalchemy>=2.0.0",
+  "typer>=0.12.0",
+  "rich>=13.7.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0",
+  "pytest-cov>=4.1.0",
+]
+dashboard = [
+  "streamlit>=1.32.0",
+]
+pdf = [
+  "docx2pdf>=0.1.8",
+]
+
+[project.scripts]
+job-agent = "job_agent.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

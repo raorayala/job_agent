@@ -1,81 +1,140 @@
 # Job Search Agent
 
-A Python agent that monitors your Gmail for job alerts from major platforms, analyzes listing relevance, tailors your resume for ATS compatibility, and tracks applications to prevent duplicates.
+Local-first Python agent that monitors Gmail job alerts, scores opportunities against your career profile, helps tailor truthful ATS resumes, and tracks applications in SQLite — without ever submitting applications for you.
 
-## Features (roadmap)
+## MVP architecture
 
-| Phase | Capability | Status |
-|-------|------------|--------|
-| 1 | Gmail fetch + platform parsing | ✅ Scaffolded |
-| 1 | Duplicate detection + SQLite tracking | ✅ Scaffolded |
-| 1 | Rule-based match scoring | ✅ Scaffolded |
-| 1 | ATS keyword resume tailoring | ✅ Basic |
-| 2 | LLM-powered job analysis (Ollama / free tier) | 🔜 Planned |
-| 2 | Scheduled proactive monitoring | 🔜 Planned |
-| 3 | Application submission helpers | 🔜 Planned |
+```
+Gmail (OAuth readonly) → email parser → normalizer/dedupe
+        ↓
+ rule-based matcher (+ optional LLM later)
+        ↓
+ SQLite tracker ← CLI (approval required for Applied)
+        ↓
+ Desktop/Jobs Applied/<Company>/<Job Title>/
+```
 
-## Supported platforms
+| Layer | Responsibility |
+|-------|----------------|
+| `config.yaml` + `.env` | Candidate profile, platforms, secrets |
+| `database.py` | SQLite jobs + processed Gmail IDs |
+| `gmail_client.py` | Read-only OAuth sync (incremental) |
+| `matcher.py` | Explainable 0–100 scoring |
+| `resume_tailor.py` | Factual keyword emphasis only |
+| `cli.py` | Human-in-the-loop commands |
 
-ZipRecruiter, Indeed, Glassdoor, Dice, Lensa — extensible via `config.yaml`.
+**Design rules:** data stays local; LLM is optional; Applied status needs `--confirm`; no auto-submit / CAPTCHA / browser automation on job sites.
 
-## Quick start
+## Milestone status
+
+| # | Milestone | Status |
+|---|-----------|--------|
+| 1 | Project setup, config, SQLite schema, CLI | ✅ Done |
+| 2 | Candidate profile + master-resume ingestion | Next |
+| 3 | Gmail OAuth + incremental sync | Planned |
+| 4 | Email/job extraction | Planned |
+| 5 | Duplicate detection + tracking | Planned |
+| 6 | Rule-based explainable matching | Planned |
+| 7 | Truthful resume tailoring + Desktop export | Planned |
+| 8 | Tests polish + optional Streamlit dashboard | Planned |
+
+## Quick start (Windows)
 
 ```powershell
 cd C:\Users\Admin\Projects\job-search-agent
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
+py -3 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -e ".[dev]"
 copy .env.example .env
-python main.py setup
+python -m job_agent setup
+python -m job_agent profile
 ```
 
-### Gmail API setup (free)
+Or run `scripts\dev_setup.ps1`.
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a project → **APIs & Services** → enable **Gmail API**
-3. **Credentials** → Create **OAuth client ID** → Desktop app
-4. Download JSON → save as `credentials.json` in this folder
-5. First `scan` run opens a browser for one-time authorization
-
-### Run a scan
+### Working commands (Milestone 1)
 
 ```powershell
-python main.py scan
-python main.py history
+python -m job_agent setup
+python -m job_agent profile
+python -m job_agent jobs
+python -m job_agent statuses
+python -m job_agent mark-applied <job_id> --confirm   # only after you apply manually
 ```
 
-Tailored resumes and exports land in `Desktop\Jobs Applied\`.
+Commands reserved for later milestones exit with a clear message:
 
-## Project structure
+`sync-gmail`, `analyze`, `tailor`, `dashboard`.
+
+## Configure your profile
+
+Edit `config.yaml` → `profile`:
+
+- Target titles / industries
+- Required & preferred skills
+- Years of experience
+- Locations & work modes (`remote` / `hybrid` / `on-site`)
+- Salary range & employment type
+- Work authorization
+- Exclusions (companies, titles, skills, locations)
+- Optional cover-letter template path
+
+Set `MASTER_RESUME_PATH` and `JOBS_APPLIED_FOLDER` in `.env`.
+
+## Gmail OAuth setup (free, read-only)
+
+1. [Google Cloud Console](https://console.cloud.google.com/) → create/select a project
+2. **APIs & Services** → enable **Gmail API**
+3. **OAuth consent screen** → add yourself as a test user
+4. **Credentials** → **OAuth client ID** → application type **Desktop app**
+5. Download JSON → save as `credentials.json` in the project root (gitignored)
+6. First real sync will open a browser; token is stored in `token.json` (gitignored)
+7. Scope used: `https://www.googleapis.com/auth/gmail.readonly` only
+
+Redirect URIs for Desktop clients are handled by the local loopback server (`google-auth-oauthlib`). Do not commit `credentials.json` or `token.json`.
+
+## Project layout
 
 ```
 job-search-agent/
-├── config.yaml          # Platforms, target roles/skills
-├── credentials.json     # You add this (not committed)
-├── data/jobs.db         # SQLite application tracker
-├── main.py              # CLI
-└── src/
-    ├── agent.py         # Orchestration
-    ├── gmail_client.py  # Gmail API
-    ├── job_parser.py    # Email → structured job
-    ├── job_analyzer.py  # Relevance scoring
-    ├── resume_tailor.py # DOCX tailoring
-    └── application_tracker.py
+├── README.md
+├── pyproject.toml
+├── .env.example
+├── .gitignore
+├── config.yaml
+├── src/job_agent/
+│   ├── cli.py
+│   ├── config.py
+│   ├── models.py
+│   ├── database.py
+│   ├── gmail_client.py
+│   ├── email_parser.py
+│   ├── job_normalizer.py
+│   ├── matcher.py
+│   ├── resume_tailor.py
+│   ├── document_exporter.py
+│   ├── application_tracker.py
+│   └── services/
+├── tests/
+├── data/                 # SQLite DB (gitignored)
+├── templates/
+└── scripts/
 ```
 
-## Customize your profile
+## Tests
 
-Edit `config.yaml`:
+```powershell
+pytest -q
+```
 
-- `target_roles` — job titles you want
-- `target_skills` — skills to match and inject into resumes
-- `platforms` — sender domains and URL patterns
+## Security & privacy
 
-## Important notes
-
-- **Human in the loop**: Review every tailored resume before applying.
-- **No auto-submit**: Deliberately omitted to avoid ToS violations and bad applications.
-- **Privacy**: Credentials and job data stay local on your machine.
+- Credentials, OAuth tokens, `.env`, databases, and generated resumes are gitignored
+- Treat resume content, email bodies, and application history as sensitive personal data
+- Prefer rule-based matching (`LLM_PROVIDER=none`) to avoid sending job text to third parties
+- Never invent qualifications in tailored resumes
+- Never mark Applied without explicit `--confirm`
 
 ## License
 

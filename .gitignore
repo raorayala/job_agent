@@ -9,25 +9,39 @@ build/
 .venv/
 venv/
 env/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
 
-# Secrets & local config
+# Secrets & credentials — never commit
 .env
+.env.local
 credentials.json
+client_secret*.json
 token.json
 token.pickle
+secrets/
+*.pem
+*.key
 
-# IDE
+# Personal / sensitive data
+data/*.db
+data/*.db-journal
+data/cache/
+data/profile.local.yaml
+templates/master_resume*
+**/personal/
+
+# Generated application artifacts
+output/
+Desktop/
+**/Jobs Applied/
+
+# IDE / OS
 .vscode/
 .idea/
 *.swp
-
-# Data (local application records stay on your machine)
-data/*.db
-data/cache/
-
-# Generated resumes (keep master resume in repo if you prefer)
-output/
-
-# OS
 .DS_Store
 Thumbs.db
