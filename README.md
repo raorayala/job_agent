@@ -2,6 +2,23 @@
 
 Local-first Python agent that monitors Gmail job alerts, scores opportunities against your career profile, helps tailor truthful ATS resumes, and tracks applications in SQLite — without ever submitting applications for you.
 
+## Full documentation
+
+See the **[docs/](docs/README.md)** folder for the complete project document set:
+
+| Doc | Topic |
+|-----|-------|
+| [Requirements](docs/01-REQUIREMENTS.md) | Goals, scope, functional requirements |
+| [Design](docs/02-DESIGN-SPECIFICATION.md) | UX flows, CLI contracts, safeguards |
+| [Architecture](docs/03-ARCHITECTURE.md) | Components and data flow |
+| [Implementation](docs/04-IMPLEMENTATION.md) | Module status and coding details |
+| [Data model](docs/05-DATA-MODEL.md) | SQLite schema and config fields |
+| [Security](docs/06-SECURITY-PRIVACY.md) | OAuth, secrets, privacy |
+| [Testing](docs/07-TESTING.md) | Test strategy |
+| [Operations](docs/08-OPERATIONS-DEPLOYMENT.md) | Local production install & ops |
+| [Roadmap](docs/09-ROADMAP.md) | Milestones and future work |
+| [User guide](docs/10-USER-GUIDE.md) | Day-to-day usage |
+
 ## MVP architecture
 
 ```
