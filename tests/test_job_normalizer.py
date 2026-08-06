@@ -5,10 +5,10 @@ from __future__ import annotations
 from job_agent.job_normalizer import normalize_company, normalize_text, normalize_url
 
 
-def test_normalize_url_strips_query() -> None:
+def test_normalize_url_strips_tracking_query() -> None:
     assert (
-        normalize_url("https://www.indeed.com/viewjob?jk=abc&from=email")
-        == "https://www.indeed.com/viewjob"
+        normalize_url("https://www.indeed.com/viewjob?jk=abc&from=email&utm_source=alert")
+        == "https://www.indeed.com/viewjob?jk=abc"
     )
 
 

@@ -63,25 +63,31 @@ def load_yaml_config(config_path: Path | None = None) -> dict[str, Any]:
     return data
 
 
+def _clean_str_list(items: Any) -> list[str]:
+    if not items or not isinstance(items, list):
+        return []
+    return [str(x) for x in items if x is not None and str(x).strip()]
+
+
 def profile_from_mapping(data: dict[str, Any]) -> CandidateProfile:
     """Build CandidateProfile from config.yaml `profile` section."""
     return CandidateProfile(
-        target_titles=list(data.get("target_titles") or []),
-        industries=list(data.get("industries") or []),
-        required_skills=list(data.get("required_skills") or []),
-        preferred_skills=list(data.get("preferred_skills") or []),
+        target_titles=_clean_str_list(data.get("target_titles")),
+        industries=_clean_str_list(data.get("industries")),
+        required_skills=_clean_str_list(data.get("required_skills")),
+        preferred_skills=_clean_str_list(data.get("preferred_skills")),
         years_experience=int(data.get("years_experience") or 0),
-        locations=list(data.get("locations") or []),
-        work_modes=[str(m).lower() for m in (data.get("work_modes") or [])],
+        locations=_clean_str_list(data.get("locations")),
+        work_modes=[m.lower() for m in _clean_str_list(data.get("work_modes"))],
         salary_min=data.get("salary_min"),
         salary_max=data.get("salary_max"),
         salary_currency=str(data.get("salary_currency") or "USD"),
-        employment_types=[str(t).lower() for t in (data.get("employment_types") or [])],
+        employment_types=[t.lower() for t in _clean_str_list(data.get("employment_types"))],
         work_authorization=data.get("work_authorization"),
-        excluded_companies=list(data.get("excluded_companies") or []),
-        excluded_titles=list(data.get("excluded_titles") or []),
-        excluded_skills=list(data.get("excluded_skills") or []),
-        excluded_locations=list(data.get("excluded_locations") or []),
+        excluded_companies=_clean_str_list(data.get("excluded_companies")),
+        excluded_titles=_clean_str_list(data.get("excluded_titles")),
+        excluded_skills=_clean_str_list(data.get("excluded_skills")),
+        excluded_locations=_clean_str_list(data.get("excluded_locations")),
         master_resume_path=data.get("master_resume_path"),
         cover_letter_template_path=data.get("cover_letter_template_path"),
     )

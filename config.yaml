@@ -21,16 +21,21 @@ platforms:
 # Candidate profile — customize before running analyze/tailor
 profile:
   target_titles:
-    - Software Engineer
-    - Python Developer
-    - Backend Developer
-    - Full Stack Developer
+    - Senior Backend Engineer
+    - Java Developer
+    - Senior Software Engineer
+    - Platform Engineer
+    -
   industries:
     - Software
     - Technology
-    - SaaS
+    - SaaS 
+    - Site Reliability Engineer
   required_skills:
+    - Java
+    - SpringBoot
     - Python
+    - NoSQL
     - SQL
     - Git
   preferred_skills:
@@ -39,6 +44,7 @@ profile:
     - REST API
     - FastAPI
     - PostgreSQL
+    - Oracle
   years_experience: 5
   locations:
     - Remote
@@ -46,8 +52,8 @@ profile:
   work_modes:
     - remote
     - hybrid
-  salary_min: 100000
-  salary_max: 160000
+  salary_min: 170000
+  salary_max: 250000
   salary_currency: USD
   employment_types:
     - full-time
