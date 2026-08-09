@@ -517,6 +517,48 @@ def follow_ups_cmd() -> None:
         session.close()
 
 
+@app.command("search-links")
+def search_links_cmd(
+    open_browser: bool = typer.Option(False, "--open", help="Open generated search links in default browser"),
+) -> None:
+    """Generate direct job search query URLs for Indeed, Dice, ZipRecruiter, LinkedIn, and Glassdoor using config.yaml skills and titles."""
+    import webbrowser
+    from urllib.parse import quote_plus
+
+    profile = load_candidate_profile()
+    titles = profile.target_titles or ["Software Engineer"]
+    skills = profile.required_skills[:3]
+    location = profile.locations[0] if profile.locations else ""
+
+    query = " ".join([titles[0]] + skills)
+    encoded_query = quote_plus(query)
+    encoded_loc = quote_plus(location)
+
+    urls = {
+        "Dice": f"https://www.dice.com/jobs?q={encoded_query}&location={encoded_loc}",
+        "Indeed": f"https://www.indeed.com/jobs?q={encoded_query}&l={encoded_loc}",
+        "ZipRecruiter": f"https://www.ziprecruiter.com/candidate/search?search={encoded_query}&location={encoded_loc}",
+        "LinkedIn": f"https://www.linkedin.com/jobs/search/?keywords={encoded_query}&location={encoded_loc}",
+        "Glassdoor": f"https://www.glassdoor.com/Job/jobs.htm?sc.keyword={encoded_query}",
+    }
+
+    table = Table(title="Generated Automated Job Search Links (from config.yaml)")
+    table.add_column("Platform", style="bold cyan")
+    table.add_column("Search Query Link", style="underline blue")
+
+    for platform, url in urls.items():
+        table.add_row(platform, url)
+        if open_browser:
+            webbrowser.open(url)
+
+    console.print(table)
+    console.print(f"\n[bold green]Query Built:[/bold green] '{query}' | [bold green]Location:[/bold green] '{location or 'Any'}'")
+    if open_browser:
+        console.print("[green]Opened search links in your web browser![/green]")
+    else:
+        console.print("[dim]Tip: Add --open flag to open all links directly in your default browser.[/dim]")
+
+
 @app.command("add-contact")
 def add_contact_cmd(
     name: str = typer.Argument(..., help="Contact full name"),
