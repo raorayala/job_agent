@@ -21,58 +21,97 @@ platforms:
 # Candidate profile — customize before running analyze/tailor
 profile:
   target_titles:
-    - java
+    - Senior Java Backend Engineer
     - Senior Backend Engineer
-    - Java Developer
     - Senior Software Engineer
+    - Distributed Systems Engineer
     - Platform Engineer
-    -
+    - Cloud Backend Engineer
   industries:
-    - Software
-    - Technology
+    - Financial Services
+    - Payments, Fintech
     - SaaS 
     - Site Reliability Engineer
+    - Enterprise Software
+    - optionally Security/Identity
   required_skills:
     - Java
     - SpringBoot
+    - Microservices
+    - REST APIs
+    - AWS
+    - GCP
+    - Docker
+    - Kubernetes
+    - CI/CD
     - Python
     - NoSQL
     - SQL
     - Git
   preferred_skills:
-    - Docker
-    - AWS
-    - REST API
-    - FastAPI
+    - Kafka
+    - JMS
+    - MongoDB
+    - Oracle
+    - Jenkins
+    - API Gateway
+    - Splunk
+    - Prometheus
+    - Grafana
     - PostgreSQL
     - Oracle
-  years_experience: 5
+    - OAuth2
+    - JWT
+    - BDD
+    - TDD
+    - incident management
+    - payments
+    - PCI compliance
+    - PII compliance
+    - SOX compliance
+    - identity
+    - KYC
+    - application security
+    - observability
+    - high-volume distributed systems
+
+  years_experience: 15
+
   locations:
-    - Remote
-    - United States
+    - All Remote jobs
+    - Bay Area
+    - SanFrancisco
+    - Texas
+    - Virginia
+    
   work_modes:
     - remote
     - hybrid
+    - on-Site
   salary_min: 130000
   salary_max: 180000
   salary_currency: USD
   employment_types:
     - full-time
-  work_authorization: "Authorized to work in the US"
+    - contract
+    - part time
+  work_authorization: "U.S. Citizen"
   excluded_companies: []
   excluded_titles:
     - intern
     - unpaid
   excluded_skills: []
   excluded_locations: []
-  master_resume_path: null  # override via MASTER_RESUME_PATH in .env
+
+  # override via MASTER_RESUME_PATH in .env
+  master_resume_path: null  
   cover_letter_template_path: null
 
 # Weighted match factors (must sum conceptually to explainable scoring)
 match_weights:
   required_skills: 30
-  preferred_skills: 15
-  title_similarity: 20
+  preferred_skills: 20
+  title_similarity: 15
   experience_alignment: 10
   location_work_mode: 15
   salary_compatibility: 10

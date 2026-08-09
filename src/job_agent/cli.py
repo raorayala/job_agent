@@ -519,12 +519,35 @@ def follow_ups_cmd() -> None:
         session.close()
 
 
+def _open_in_browser(url: str, browser_choice: str = "chrome") -> None:
+    import os
+    import subprocess
+    import webbrowser
+
+    choice = browser_choice.lower()
+    if choice in ("chrome", "google-chrome", "auto"):
+        possible_paths = [
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+            os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
+        ]
+        chrome_path = next((p for p in possible_paths if os.path.exists(p)), None)
+        if chrome_path:
+            try:
+                subprocess.Popen([chrome_path, url])
+                return
+            except Exception:
+                pass
+
+    webbrowser.open(url)
+
+
 @app.command("search-links")
 def search_links_cmd(
-    open_browser: bool = typer.Option(False, "--open", help="Open generated search links in default browser"),
+    open_browser: bool = typer.Option(False, "--open", help="Open generated search links in browser"),
+    browser: str = typer.Option("chrome", "--browser", help="Browser choice: 'chrome', 'edge', or 'default'"),
 ) -> None:
     """Generate direct job search query URLs for Indeed, Dice, ZipRecruiter, LinkedIn, and Glassdoor using config.yaml skills and titles."""
-    import webbrowser
     from urllib.parse import quote_plus
 
     profile = load_candidate_profile()
@@ -551,14 +574,14 @@ def search_links_cmd(
     for platform, url in urls.items():
         table.add_row(platform, url)
         if open_browser:
-            webbrowser.open(url)
+            _open_in_browser(url, browser_choice=browser)
 
     console.print(table)
     console.print(f"\n[bold green]Query Built:[/bold green] '{query}' | [bold green]Location:[/bold green] '{location or 'Any'}'")
     if open_browser:
-        console.print("[green]Opened search links in your web browser![/green]")
+        console.print(f"[green]Opened search links in {browser.capitalize()} browser![/green]")
     else:
-        console.print("[dim]Tip: Add --open flag to open all links directly in your default browser.[/dim]")
+        console.print("[dim]Tip: Add --open flag to open all links directly in Chrome.[/dim]")
 
 
 @app.command("fetch-jobs")
