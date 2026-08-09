@@ -25,42 +25,86 @@ USER_AGENT = (
 
 def fetch_dice_jobs(query: str, location: str = "Remote", limit: int = 15) -> list[ParsedJob]:
     """
-    Search Dice directly using Dice's public job search API endpoint.
+    Search Dice directly by querying www.dice.com/jobs HTML and JSON-LD schema.
     """
     jobs: list[ParsedJob] = []
     try:
         q_enc = urllib.parse.quote(query)
         loc_enc = urllib.parse.quote(location)
-        url = f"https://mfe-search.dice.com/mfe/search/api/v1/jobs/search?q={q_enc}&location={loc_enc}&pageSize={limit}&page=1"
+        url = f"https://www.dice.com/jobs?q={q_enc}&location={loc_enc}"
 
-        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
+        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
         with urllib.request.urlopen(req, timeout=12) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+            html = resp.read().decode("utf-8", errors="ignore")
 
-        result_list = data.get("data") or []
-        for item in result_list:
-            title = item.get("title") or ""
-            company = item.get("companyName") or item.get("company") or "Unknown"
-            job_loc = item.get("location") or location
-            details_url = item.get("detailsPageUrl") or f"https://www.dice.com/job-detail/{item.get('id')}"
-            summary = item.get("summary") or item.get("description") or ""
+        soup = BeautifulSoup(html, "lxml")
 
-            if title:
-                parsed = ParsedJob(
-                    title=title,
-                    company=company,
-                    location=job_loc,
-                    job_url=details_url,
-                    description=summary,
-                    source_platform="dice",
-                )
-                jobs.append(parsed)
+        # 1. Parse JSON-LD structured job posting scripts if present
+        for script in soup.find_all("script", type="application/ld+json"):
+            try:
+                data = json.loads(script.string or "{}")
+                items = []
+                if isinstance(data, list):
+                    items = data
+                elif isinstance(data, dict) and data.get("@type") == "ItemList":
+                    items = [elem.get("item", elem) for elem in data.get("itemListElement", [])]
+                elif isinstance(data, dict) and data.get("@type") == "JobPosting":
+                    items = [data]
+
+                for item in items:
+                    if isinstance(item, dict) and item.get("@type") == "JobPosting":
+                        title = item.get("title") or ""
+                        company_info = item.get("hiringOrganization") or {}
+                        company = company_info.get("name") if isinstance(company_info, dict) else "Unknown"
+                        job_url = item.get("url") or url
+                        desc = item.get("description") or ""
+
+                        if title:
+                            jobs.append(ParsedJob(
+                                title=title,
+                                company=company,
+                                location=location,
+                                job_url=job_url,
+                                description=BeautifulSoup(desc, "lxml").get_text(separator=" ").strip(),
+                                source_platform="dice",
+                            ))
+            except Exception:
+                continue
+
+        # 2. Parse job card anchors directly
+        if not jobs:
+            seen_urls = set()
+            for card in soup.find_all("a", href=True):
+                href = card["href"]
+                if "/job-detail/" in href:
+                    if not href.startswith("http"):
+                        full_url = f"https://www.dice.com{href}"
+                    else:
+                        full_url = href
+
+                    if full_url in seen_urls:
+                        continue
+
+                    title = card.get_text(strip=True)
+                    if not title or len(title) < 2:
+                        continue
+
+                    seen_urls.add(full_url)
+
+                    jobs.append(ParsedJob(
+                        title=title,
+                        company="Dice Employer",
+                        location=location,
+                        job_url=full_url,
+                        description=f"Dice job listing for {title}",
+                        source_platform="dice",
+                    ))
 
         logger.info("Dice search returned %d jobs for query: '%s'", len(jobs), query)
     except Exception as exc:
         logger.warning("Dice search request failed: %s", exc)
 
-    return jobs
+    return jobs[:limit]
 
 
 def fetch_ziprecruiter_jobs(query: str, location: str = "Remote", limit: int = 10) -> list[ParsedJob]:
@@ -129,11 +173,11 @@ def search_and_import_jobs(
     Automatically search selected job platforms (Dice, ZipRecruiter, etc.)
     using target titles and skills from config.yaml, and record results in SQLite.
     """
-    titles = profile.target_titles or ["Software Engineer"]
-    skills = profile.required_skills[:3]
+    titles = [t for t in (profile.target_titles or ["Java Developer"]) if t and t.strip()]
     location = profile.locations[0] if profile.locations else "Remote"
 
-    query = " ".join([titles[0]] + skills)
+    # Search with primary target titles
+    query = titles[0] if titles else "Java Developer"
     logger.info("Searching platforms %s with query: '%s' (location: %s)", platforms, query, location)
 
     fetched_jobs: list[ParsedJob] = []
