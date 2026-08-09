@@ -7,6 +7,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 from docx import Document
+from docx.shared import Pt
 
 from job_agent.config import Settings
 from job_agent.document_exporter import application_folder, resume_filename
@@ -14,6 +15,17 @@ from job_agent.logging_config import get_logger
 from job_agent.models import MatchExplanation, ParsedJob
 
 logger = get_logger(__name__)
+
+
+def _safe_add_heading(doc: Document, text: str, level: int = 2) -> None:
+    """Add heading to DOCX, falling back to a bold paragraph if the document style gallery lacks 'Heading N'."""
+    try:
+        doc.add_heading(text, level=level)
+    except (KeyError, ValueError):
+        p = doc.add_paragraph()
+        run = p.add_run(text)
+        run.bold = True
+        run.font.size = Pt(16 if level == 1 else 13)
 
 
 def tailor_resume(
@@ -51,7 +63,7 @@ def tailor_resume(
 
     # Append ATS Keyword & Target Role Alignment Section
     doc.add_page_break()
-    heading = doc.add_heading("ATS Keyword Alignment & Job Analysis", level=2)
+    _safe_add_heading(doc, "ATS Keyword Alignment & Job Analysis", level=2)
 
     doc.add_paragraph(f"Target Role: {job.title} at {job.company}")
     doc.add_paragraph(f"Match Score: {match.score:.0f}/100 ({match.recommendation.value})")

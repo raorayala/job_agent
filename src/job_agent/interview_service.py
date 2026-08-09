@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 from docx import Document
+from docx.shared import Pt
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -15,6 +16,17 @@ from job_agent.models import CandidateProfile
 from job_agent.resume_parser import extract_resume_text
 
 logger = get_logger(__name__)
+
+
+def _safe_add_heading(doc: Document, text: str, level: int = 2) -> None:
+    """Add heading to DOCX, falling back gracefully if document styles lack 'Heading N'."""
+    try:
+        doc.add_heading(text, level=level)
+    except (KeyError, ValueError):
+        p = doc.add_paragraph()
+        run = p.add_run(text)
+        run.bold = True
+        run.font.size = Pt(16 if level == 1 else 13)
 
 
 def add_interview(
@@ -72,15 +84,15 @@ def prepare_interview_doc(
     doc_path = folder / f"{job.company}_{job.title}_Interview_Prep.docx".replace(" ", "_")
 
     doc = Document()
-    doc.add_heading(f"Interview Preparation Sheet: {job.title} at {job.company}", level=1)
+    _safe_add_heading(doc, f"Interview Preparation Sheet: {job.title} at {job.company}", level=1)
 
-    doc.add_heading("1. Role Overview & Key Details", level=2)
+    _safe_add_heading(doc, "1. Role Overview & Key Details", level=2)
     doc.add_paragraph(f"Company: {job.company}")
     doc.add_paragraph(f"Title: {job.title}")
     doc.add_paragraph(f"Location: {job.location or 'Not specified'}")
     doc.add_paragraph(f"Source URL: {job.job_url or 'N/A'}")
 
-    doc.add_heading("2. Target Qualifications & Skills to Emphasize", level=2)
+    _safe_add_heading(doc, "2. Target Qualifications & Skills to Emphasize", level=2)
     matched_skills = [s.strip() for s in (job.matched_skills or "").split(",") if s.strip()]
     if matched_skills:
         doc.add_paragraph("Core Strengths & Matched Skills:\n - " + "\n - ".join(matched_skills))
@@ -89,7 +101,7 @@ def prepare_interview_doc(
     if missing_skills:
         doc.add_paragraph("Potential Gap Areas / Follow-up Points to Address:\n - " + "\n - ".join(missing_skills))
 
-    doc.add_heading("3. Candidate Resume & Background Reference", level=2)
+    _safe_add_heading(doc, "3. Candidate Resume & Background Reference", level=2)
     resume_path = profile.get_master_resume_path(job.title)
     resume_text = extract_resume_text(resume_path)
     if resume_text:
@@ -102,7 +114,7 @@ def prepare_interview_doc(
     # Fetch recorded interviews & notes
     interviews = list_interviews(session, job_id)
     if interviews:
-        doc.add_heading("4. Recorded Interview Schedule & Notes", level=2)
+        _safe_add_heading(doc, "4. Recorded Interview Schedule & Notes", level=2)
         for iv in interviews:
             doc.add_paragraph(f"• {iv.interview_type} on {iv.interview_date.strftime('%Y-%m-%d %H:%M')}")
             if iv.participants:
@@ -113,7 +125,7 @@ def prepare_interview_doc(
                 doc.add_paragraph(f"  Tasks: {iv.prep_tasks}")
 
     if job.user_notes or job.notes:
-        doc.add_heading("5. User Notes & Custom Instructions", level=2)
+        _safe_add_heading(doc, "5. User Notes & Custom Instructions", level=2)
         doc.add_paragraph(job.user_notes or job.notes or "")
 
     doc.save(str(doc_path))
