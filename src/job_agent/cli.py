@@ -23,7 +23,7 @@ from job_agent.gmail_client import GmailNotConfiguredError, sync_job_emails
 from job_agent.logging_config import setup_logging
 from job_agent.matcher import recommendation_for_score, score_job
 from job_agent.models import ApplicationStatus, MatchExplanation, ParsedJob, Recommendation
-from job_agent.resume_tailor import tailor_resume
+from job_agent.resume_tailor import generate_cover_letter, tailor_resume
 
 app = typer.Typer(
     name="job-agent",
@@ -266,16 +266,11 @@ def jobs_cmd(
 def tailor_cmd(
     job_id: int = typer.Argument(..., help="Job database id"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show planned output path only"),
+    cover_letter: bool = typer.Option(True, "--cover-letter/--no-cover-letter", help="Generate cover letter alongside resume"),
 ) -> None:
-    """Create a tailored ATS resume for a job and save to Desktop/Jobs Applied."""
+    """Create a tailored ATS resume and cover letter for a job and save to Desktop/Jobs Applied."""
     settings, SessionLocal = _init_context()
-
-    if not settings.master_resume_path:
-        console.print(
-            "[red]MASTER_RESUME_PATH is not set in .env.[/red]\n"
-            "Please copy .env.example to .env and set MASTER_RESUME_PATH to your master resume DOCX."
-        )
-        raise typer.Exit(code=1)
+    profile = load_candidate_profile()
 
     session = SessionLocal()
     try:
@@ -283,6 +278,18 @@ def tailor_cmd(
         if job is None:
             console.print(f"[red]Job id {job_id} not found.[/red]")
             raise typer.Exit(code=1)
+
+        resume_path_str = profile.get_master_resume_path(job.title) or (
+            str(settings.master_resume_path) if settings.master_resume_path else None
+        )
+        if not resume_path_str:
+            console.print(
+                "[red]MASTER_RESUME_PATH is not set in .env or config.yaml.[/red]\n"
+                "Please copy .env.example to .env and set MASTER_RESUME_PATH to your master resume DOCX."
+            )
+            raise typer.Exit(code=1)
+
+        master_resume_path = Path(resume_path_str)
 
         parsed = ParsedJob(
             title=job.title,
@@ -308,20 +315,31 @@ def tailor_cmd(
         output_path = tailor_resume(
             job=parsed,
             match=match,
-            master_resume_path=settings.master_resume_path,
+            master_resume_path=master_resume_path,
             output_base_dir=settings.jobs_applied_folder,
             dry_run=dry_run,
         )
+
+        cover_letter_path = None
+        if cover_letter:
+            cover_letter_path = generate_cover_letter(
+                job=parsed,
+                match=match,
+                template_path=profile.cover_letter_template_path,
+                output_folder=output_path.parent,
+                dry_run=dry_run,
+            )
 
         if not dry_run:
             job.status = ApplicationStatus.READY_TO_APPLY.value
             job.tailored_resume_path = str(output_path)
             session.commit()
             console.print(
-                f"[bold green]Tailored resume created successfully![/bold green]\n"
+                f"[bold green]Tailored application documents created successfully![/bold green]\n"
                 f"  Job: {job.title} @ {job.company}\n"
-                f"  Saved to: [cyan]{output_path}[/cyan]\n"
-                f"  Status updated to: [yellow]{job.status}[/yellow]"
+                f"  Tailored Resume: [cyan]{output_path}[/cyan]\n"
+                + (f"  Cover Letter: [cyan]{cover_letter_path}[/cyan]\n" if cover_letter_path else "")
+                + f"  Status updated to: [yellow]{job.status}[/yellow]"
             )
         else:
             console.print(f"[yellow][Dry-Run][/yellow] Planned tailored resume path: {output_path}")
@@ -402,7 +420,9 @@ def profile_cmd() -> None:
         ("Work auth", profile.work_authorization or "-"),
         ("Excluded companies", _fmt_list(profile.excluded_companies)),
         ("Excluded titles", _fmt_list(profile.excluded_titles)),
-        ("Master resume", str(settings.master_resume_path) if settings.master_resume_path else "-"),
+        ("Master resume", str(settings.master_resume_path) if settings.master_resume_path else (profile.master_resume_path or "-")),
+        ("Multi-resumes", ", ".join([f"{k}: {v}" for k, v in profile.master_resumes.items()]) if profile.master_resumes else "-"),
+        ("Cover letter template", profile.cover_letter_template_path or "-"),
         ("LLM provider", settings.llm_provider),
     ]
     for key, value in rows:

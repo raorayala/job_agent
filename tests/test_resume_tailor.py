@@ -7,7 +7,7 @@ from pathlib import Path
 from docx import Document
 
 from job_agent.models import MatchExplanation, ParsedJob, Recommendation
-from job_agent.resume_tailor import tailor_resume
+from job_agent.resume_tailor import generate_cover_letter, tailor_resume
 
 
 def test_tailor_resume_creates_docx(tmp_path: Path) -> None:
@@ -55,3 +55,34 @@ def test_tailor_resume_creates_docx(tmp_path: Path) -> None:
     content = summary_txt.read_text(encoding="utf-8")
     assert "Backend Python Developer" in content
     assert "Acme Corp" in content
+
+
+def test_generate_cover_letter(tmp_path: Path) -> None:
+    output_dir = tmp_path / "Desktop" / "Jobs Applied" / "Acme" / "Python_Dev"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    job = ParsedJob(
+        title="Senior Python Developer",
+        company="Acme Software",
+        source_platform="dice",
+        job_url="https://dice.com/job-detail/888",
+    )
+
+    match = MatchExplanation(
+        score=90.0,
+        recommendation=Recommendation.STRONG_MATCH,
+        matched_skills=["Python", "Django", "PostgreSQL"],
+    )
+
+    letter_path = generate_cover_letter(
+        job=job,
+        match=match,
+        template_path=None,
+        output_folder=output_dir,
+        dry_run=False,
+    )
+
+    assert letter_path is not None
+    assert letter_path.exists()
+    assert letter_path.suffix == ".docx"
+    assert "Acme_Software" in letter_path.name

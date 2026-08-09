@@ -48,7 +48,23 @@ class CandidateProfile:
     excluded_skills: list[str] = field(default_factory=list)
     excluded_locations: list[str] = field(default_factory=list)
     master_resume_path: str | None = None
+    master_resumes: dict[str, str] = field(default_factory=dict)
     cover_letter_template_path: str | None = None
+
+    def get_master_resume_path(self, job_title: str | None = None) -> str | None:
+        """
+        Return the best matching master resume path.
+        If job_title is provided and matches a key in master_resumes, return that resume path.
+        Otherwise return master_resume_path or default in master_resumes.
+        """
+        if job_title and self.master_resumes:
+            title_lower = job_title.lower()
+            for key, path in self.master_resumes.items():
+                if key.lower() in title_lower or title_lower in key.lower():
+                    return path
+            if "default" in self.master_resumes:
+                return self.master_resumes["default"]
+        return self.master_resume_path
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

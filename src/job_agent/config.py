@@ -71,6 +71,10 @@ def _clean_str_list(items: Any) -> list[str]:
 
 def profile_from_mapping(data: dict[str, Any]) -> CandidateProfile:
     """Build CandidateProfile from config.yaml `profile` section."""
+    master_resumes = data.get("master_resumes") or {}
+    if not isinstance(master_resumes, dict):
+        master_resumes = {}
+
     return CandidateProfile(
         target_titles=_clean_str_list(data.get("target_titles")),
         industries=_clean_str_list(data.get("industries")),
@@ -89,6 +93,7 @@ def profile_from_mapping(data: dict[str, Any]) -> CandidateProfile:
         excluded_skills=_clean_str_list(data.get("excluded_skills")),
         excluded_locations=_clean_str_list(data.get("excluded_locations")),
         master_resume_path=data.get("master_resume_path"),
+        master_resumes={str(k): str(v) for k, v in master_resumes.items() if k and v},
         cover_letter_template_path=data.get("cover_letter_template_path"),
     )
 

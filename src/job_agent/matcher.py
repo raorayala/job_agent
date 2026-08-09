@@ -8,6 +8,7 @@ from difflib import SequenceMatcher
 from job_agent.config import load_yaml_config
 from job_agent.job_normalizer import calculate_similarity, normalize_text
 from job_agent.models import CandidateProfile, MatchExplanation, ParsedJob, Recommendation
+from job_agent.resume_parser import extract_resume_text
 
 
 def recommendation_for_score(score: float, excluded: bool = False) -> Recommendation:
@@ -20,9 +21,13 @@ def recommendation_for_score(score: float, excluded: bool = False) -> Recommenda
     return Recommendation.LOW_MATCH
 
 
-def score_job(job: ParsedJob, profile: CandidateProfile) -> MatchExplanation:
+def score_job(
+    job: ParsedJob,
+    profile: CandidateProfile,
+    resume_text: str | None = None,
+) -> MatchExplanation:
     """
-    Score a job listing (0-100) against candidate profile with explainable breakdown.
+    Score a job listing (0-100) against candidate profile and master resume with explainable breakdown.
 
     Weighted factors (configurable in config.yaml):
     - Required skill overlap (30)
@@ -52,6 +57,14 @@ def score_job(job: ParsedJob, profile: CandidateProfile) -> MatchExplanation:
     factor_scores: dict[str, float] = {}
 
     haystack = normalize_text(f"{job.title} {job.company} {job.description}")
+
+    # Extract resume text if not provided
+    if resume_text is None:
+        resume_path = profile.get_master_resume_path(job.title)
+        if resume_path:
+            resume_text = extract_resume_text(resume_path)
+
+    resume_haystack = normalize_text(resume_text or "")
 
     # 1. Exclusions check
     # Excluded companies
@@ -123,9 +136,14 @@ def score_job(job: ParsedJob, profile: CandidateProfile) -> MatchExplanation:
             sk_clean = skill.strip().lower()
             if not sk_clean:
                 continue
-            if re.search(r"\b" + re.escape(sk_clean) + r"\b", haystack):
+            in_job = bool(re.search(r"\b" + re.escape(sk_clean) + r"\b", haystack))
+            in_resume = bool(re.search(r"\b" + re.escape(sk_clean) + r"\b", resume_haystack)) if resume_haystack else True
+
+            if in_job:
                 req_found += 1
                 matched_skills.append(skill)
+                if resume_haystack and not in_resume:
+                    concerns.append(f"Required skill '{skill}' requested by job but not found in master resume text")
             else:
                 missing_skills.append(skill)
         req_ratio = req_found / max(len(profile.required_skills), 1)

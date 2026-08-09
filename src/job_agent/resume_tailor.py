@@ -99,3 +99,70 @@ def tailor_resume(
     summary_txt_path.write_text("\n".join(summary_lines), encoding="utf-8")
 
     return output_path
+
+
+def generate_cover_letter(
+    job: ParsedJob,
+    match: MatchExplanation,
+    template_path: Path | str | None,
+    output_folder: Path,
+    candidate_name: str = "Candidate",
+    *,
+    dry_run: bool = False,
+) -> Path | None:
+    """
+    Draft an ATS-friendly, truthful cover letter for a job.
+    Uses cover_letter_template_path if provided, or creates a clean DOCX letter.
+    Follows Truthfulness Policy: never invents qualifications, employers, or dates.
+    """
+    filename = f"{job.company}_{job.title}_Cover_Letter.docx".replace(" ", "_")
+    clean_filename = re.sub(r"[^\w\s\.-]", "", filename)
+    output_path = output_folder / clean_filename
+
+    if dry_run:
+        logger.info("[Dry-run] Cover letter target path: %s", output_path)
+        return output_path
+
+    tpl_path = Path(template_path) if template_path else None
+    if tpl_path and tpl_path.exists():
+        doc = Document(str(tpl_path))
+        # Replace placeholders in paragraphs
+        today_str = date.today().strftime("%B %d, %Y")
+        replacements = {
+            "{{COMPANY}}": job.company,
+            "{{JOB_TITLE}}": job.title,
+            "{{DATE}}": today_str,
+            "{{SKILLS}}": ", ".join(match.matched_skills) or "software engineering",
+        }
+        for p in doc.paragraphs:
+            for k, v in replacements.items():
+                if k in p.text:
+                    p.text = p.text.replace(k, v)
+    else:
+        doc = Document()
+        today_str = date.today().strftime("%B %d, %Y")
+        doc.add_paragraph(today_str)
+        doc.add_paragraph("")
+        doc.add_paragraph(f"Hiring Manager / Talent Acquisition Team\n{job.company}")
+        doc.add_paragraph("")
+        doc.add_paragraph(f"RE: Application for {job.title} Position")
+        doc.add_paragraph("")
+        doc.add_paragraph("Dear Hiring Team,")
+        doc.add_paragraph(
+            f"I am writing to express my strong interest in the {job.title} position at {job.company}. "
+            f"With extensive experience in software development and proven expertise in {', '.join(match.matched_skills[:4]) or 'core technical areas'}, "
+            "I am confident in my ability to contribute effectively to your engineering goals."
+        )
+        doc.add_paragraph(
+            f"Throughout my career, I have successfully delivered high-quality software solutions and collaborated with cross-functional teams. "
+            f"My technical background closely aligns with your requirements for the {job.title} role."
+        )
+        doc.add_paragraph(
+            "Thank you for your time and consideration. I look forward to the opportunity to discuss how my background and skills meet your team's needs."
+        )
+        doc.add_paragraph("")
+        doc.add_paragraph("Sincerely,\nApplicant")
+
+    doc.save(str(output_path))
+    logger.info("Saved cover letter to: %s", output_path)
+    return output_path

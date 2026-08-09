@@ -135,19 +135,34 @@ def check_duplicate(
                 similarity=1.0,
             )
 
-    # 3. Similarity check against recent active jobs in the DB
-    stmt_all = select(JobRecord).order_by(JobRecord.id.desc()).limit(200)
+    # 3. Fuzzy similarity check across company, title, and location
+    stmt_all = select(JobRecord).order_by(JobRecord.id.desc()).limit(300)
     recent_jobs = list(session.scalars(stmt_all))
 
     for existing in recent_jobs:
-        if norm_comp and existing.company_normalized and norm_comp == existing.company_normalized:
-            title_sim = calculate_similarity(job.title, existing.title)
+        comp_sim = calculate_similarity(job.company, existing.company) if job.company and existing.company else 0.0
+        title_sim = calculate_similarity(job.title, existing.title)
+        loc_sim = calculate_similarity(job.location or "", existing.location or "") if job.location and existing.location else 0.5
+
+        # Same or near-identical company + high title similarity
+        if (norm_comp and existing.company_normalized and norm_comp == existing.company_normalized) or comp_sim >= 0.85:
             if title_sim >= title_similarity_threshold:
                 return DuplicateCheckResult(
                     is_duplicate=True,
-                    reason=f"High title similarity ({title_sim:.0%}) at company '{job.company}' with job #{existing.id}",
+                    reason=f"Near-duplicate match ({title_sim:.0%} title similarity) at '{existing.company}' with job #{existing.id}",
                     existing_job_id=existing.id,
                     similarity=title_sim,
+                )
+
+        # High content/description similarity if descriptions present
+        if job.description and existing.description and len(job.description) > 100 and len(existing.description) > 100:
+            desc_sim = calculate_similarity(job.description[:500], existing.description[:500])
+            if desc_sim >= content_similarity_threshold and (title_sim >= 0.70 or comp_sim >= 0.70):
+                return DuplicateCheckResult(
+                    is_duplicate=True,
+                    reason=f"High content similarity ({desc_sim:.0%}) with job #{existing.id}",
+                    existing_job_id=existing.id,
+                    similarity=desc_sim,
                 )
 
     return DuplicateCheckResult(is_duplicate=False)

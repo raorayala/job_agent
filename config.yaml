@@ -52,8 +52,8 @@ profile:
   work_modes:
     - remote
     - hybrid
-  salary_min: 170000
-  salary_max: 250000
+  salary_min: 130000
+  salary_max: 180000
   salary_currency: USD
   employment_types:
     - full-time
