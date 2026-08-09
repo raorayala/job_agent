@@ -236,23 +236,27 @@ def sync_job_emails(
                         }
                     )
                 else:
-                    record, match, dupe_res = record_parsed_job(session, job, profile)
-                    if dupe_res.is_duplicate:
-                        summary["duplicates_skipped"] += 1
-                    else:
-                        summary["new_jobs"] += 1
+                    try:
+                        record, match, dupe_res = record_parsed_job(session, job, profile)
+                        if dupe_res.is_duplicate:
+                            summary["duplicates_skipped"] += 1
+                        else:
+                            summary["new_jobs"] += 1
 
-                    summary["jobs"].append(
-                        {
-                            "id": record.id,
-                            "title": record.title,
-                            "company": record.company,
-                            "platform": record.source_platform,
-                            "score": record.match_score,
-                            "url": record.job_url,
-                            "is_duplicate": record.is_duplicate,
-                        }
-                    )
+                        summary["jobs"].append(
+                            {
+                                "id": record.id,
+                                "title": record.title,
+                                "company": record.company,
+                                "platform": record.source_platform,
+                                "score": record.match_score,
+                                "url": record.job_url,
+                                "is_duplicate": record.is_duplicate,
+                            }
+                        )
+                    except Exception as exc:
+                        session.rollback()
+                        logger.error("Failed recording job '%s' @ '%s': %s", job.title, job.company, exc)
 
             if not dry_run:
                 mark_email_processed(

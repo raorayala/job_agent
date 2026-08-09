@@ -17,6 +17,7 @@ from sqlalchemy import (
     create_engine,
     event,
     select,
+    text,
 )
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
@@ -38,7 +39,6 @@ class JobRecord(Base):
     __tablename__ = "jobs"
     __table_args__ = (
         UniqueConstraint("job_url_normalized", name="uq_job_url_normalized"),
-        UniqueConstraint("gmail_message_id", name="uq_gmail_message_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -109,10 +109,62 @@ def create_db_engine(db_path: str | Path) -> Engine:
     return engine
 
 
+def _migrate_sqlite_schema(engine: Engine) -> None:
+    """Migrate legacy SQLite schema if uq_gmail_message_id unique constraint exists on jobs table."""
+    try:
+        with engine.begin() as conn:
+            res = conn.execute(text("SELECT sql FROM sqlite_master WHERE tbl_name='jobs' AND type='table'")).fetchone()
+            if res and res[0] and "uq_gmail_message_id" in res[0]:
+                conn.execute(text("PRAGMA foreign_keys=OFF;"))
+                conn.execute(text("""
+                    CREATE TABLE jobs_new (
+                        id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        title VARCHAR(300) NOT NULL,
+                        company VARCHAR(200) NOT NULL,
+                        location VARCHAR(200),
+                        source_platform VARCHAR(50) NOT NULL,
+                        job_url VARCHAR(1000) NOT NULL,
+                        job_url_normalized VARCHAR(1000) NOT NULL,
+                        salary VARCHAR(200),
+                        employment_type VARCHAR(100),
+                        description TEXT,
+                        date_discovered DATETIME NOT NULL,
+                        date_applied DATETIME,
+                        follow_up_date DATETIME,
+                        status VARCHAR(50) NOT NULL,
+                        match_score FLOAT,
+                        recommendation VARCHAR(50),
+                        match_summary TEXT,
+                        matched_skills TEXT,
+                        missing_skills TEXT,
+                        concerns TEXT,
+                        tailored_resume_path VARCHAR(1000),
+                        notes TEXT,
+                        gmail_message_id VARCHAR(200),
+                        is_duplicate BOOLEAN NOT NULL,
+                        duplicate_of_id INTEGER,
+                        duplicate_reason VARCHAR(300),
+                        company_normalized VARCHAR(200),
+                        title_normalized VARCHAR(300),
+                        location_normalized VARCHAR(200),
+                        created_at DATETIME NOT NULL,
+                        updated_at DATETIME NOT NULL,
+                        CONSTRAINT uq_job_url_normalized UNIQUE (job_url_normalized)
+                    );
+                """))
+                conn.execute(text("INSERT INTO jobs_new SELECT * FROM jobs;"))
+                conn.execute(text("DROP TABLE jobs;"))
+                conn.execute(text("ALTER TABLE jobs_new RENAME TO jobs;"))
+                conn.execute(text("PRAGMA foreign_keys=ON;"))
+    except Exception:
+        pass
+
+
 def init_db(db_path: str | Path) -> sessionmaker[Session]:
     """Create tables and return a session factory."""
     engine = create_db_engine(db_path)
     Base.metadata.create_all(engine)
+    _migrate_sqlite_schema(engine)
     return sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
 

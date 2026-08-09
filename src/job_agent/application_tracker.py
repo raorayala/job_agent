@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from job_agent.database import JobRecord, get_job, list_jobs
@@ -47,6 +48,30 @@ def record_parsed_job(
     norm_title = normalize_title(job.title)
     norm_loc = normalize_text(job.location)
 
+    # Check if a record with this normalized URL already exists
+    stmt = select(JobRecord).where(JobRecord.job_url_normalized == norm_url)
+    existing = session.scalars(stmt).first()
+
+    if existing:
+        existing.match_score = match.score
+        existing.recommendation = match.recommendation.value
+        existing.match_summary = match.summary
+        existing.matched_skills = ", ".join(match.matched_skills)
+        existing.missing_skills = ", ".join(match.missing_skills)
+        existing.concerns = "; ".join(match.concerns)
+        existing.is_duplicate = True
+        if dupe_result.reason:
+            existing.duplicate_reason = dupe_result.reason
+
+        try:
+            session.commit()
+            session.refresh(existing)
+        except Exception as exc:
+            session.rollback()
+            logger.warning("Failed updating existing job #%d: %s", existing.id, exc)
+
+        return existing, match, dupe_result
+
     record = JobRecord(
         title=job.title,
         company=job.company,
@@ -74,8 +99,17 @@ def record_parsed_job(
     )
 
     session.add(record)
-    session.commit()
-    session.refresh(record)
+    try:
+        session.commit()
+        session.refresh(record)
+    except Exception as exc:
+        session.rollback()
+        logger.warning("Failed saving new job record '%s': %s", job.title, exc)
+        stmt_check = select(JobRecord).where(JobRecord.job_url_normalized == norm_url)
+        found = session.scalars(stmt_check).first()
+        if found:
+            return found, match, dupe_result
+        raise
 
     logger.info(
         "Recorded job #%d: '%s' @ '%s' (Score: %.0f, Duplicate: %s)",
