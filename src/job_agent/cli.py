@@ -560,11 +560,11 @@ def search_links_cmd(
     encoded_loc = quote_plus(location)
 
     urls = {
-        "Dice": f"https://www.dice.com/jobs?q={encoded_query}&location={encoded_loc}",
-        "Indeed": f"https://www.indeed.com/jobs?q={encoded_query}&l={encoded_loc}",
-        "ZipRecruiter": f"https://www.ziprecruiter.com/candidate/search?search={encoded_query}&location={encoded_loc}",
-        "LinkedIn": f"https://www.linkedin.com/jobs/search/?keywords={encoded_query}&location={encoded_loc}",
-        "Glassdoor": f"https://www.glassdoor.com/Job/jobs.htm?sc.keyword={encoded_query}",
+        "Dice": f"https://www.dice.com/jobs?q={encoded_query}&location={encoded_loc}&postedDate=14",
+        "Indeed": f"https://www.indeed.com/jobs?q={encoded_query}&l={encoded_loc}&fromage=14",
+        "ZipRecruiter": f"https://www.ziprecruiter.com/candidate/search?search={encoded_query}&location={encoded_loc}&days=14",
+        "LinkedIn": f"https://www.linkedin.com/jobs/search/?keywords={encoded_query}&location={encoded_loc}&f_TPR=r1209600",
+        "Glassdoor": f"https://www.glassdoor.com/Job/jobs.htm?sc.keyword={encoded_query}&fromAge=14",
     }
 
     table = Table(title="Generated Automated Job Search Links (from config.yaml)")
@@ -587,16 +587,16 @@ def search_links_cmd(
 @app.command("fetch-jobs")
 def fetch_jobs_cmd(
     platforms: str = typer.Option("dice,ziprecruiter", "--platforms", help="Comma-separated platforms to search (e.g., 'dice,ziprecruiter')"),
-    limit: int = typer.Option(15, "--limit", help="Max jobs per platform"),
+    limit: int = typer.Option(9, "--limit", help="Max jobs per platform (default: 9, <10 jobs per run)"),
 ) -> None:
-    """Fetch and search jobs directly from Dice, ZipRecruiter, and other job sites using config.yaml skills (no Gmail needed)."""
+    """Fetch and search jobs directly from Dice, ZipRecruiter, and other job sites using config.yaml skills (< 10 jobs per platform, < 1-2 weeks old)."""
     _, SessionLocal = _init_context()
     profile = load_candidate_profile()
     session = SessionLocal()
 
     platform_list = [p.strip().lower() for p in platforms.split(",") if p.strip()]
 
-    console.print(f"[cyan]Fetching jobs directly from platforms: {', '.join(platform_list)}...[/cyan]")
+    console.print(f"[cyan]Fetching jobs (<10 per platform, posted in last 1-2 weeks) from: {', '.join(platform_list)}...[/cyan]")
     try:
         results = search_and_import_jobs(
             session=session,

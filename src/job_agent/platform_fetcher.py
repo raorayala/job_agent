@@ -23,15 +23,16 @@ USER_AGENT = (
 )
 
 
-def fetch_dice_jobs(query: str, location: str = "Remote", limit: int = 15) -> list[ParsedJob]:
+def fetch_dice_jobs(query: str, location: str = "Remote", limit: int = 9) -> list[ParsedJob]:
     """
-    Search Dice directly by querying www.dice.com/jobs HTML and JSON-LD schema.
+    Search Dice directly by querying www.dice.com/jobs HTML and JSON-LD schema (posted within last 14 days / 1-2 weeks).
     """
     jobs: list[ParsedJob] = []
+    limit = min(limit, 9)  # Strict initial run requirement: less than 10 items
     try:
         q_enc = urllib.parse.quote(query)
         loc_enc = urllib.parse.quote(location)
-        url = f"https://www.dice.com/jobs?q={q_enc}&location={loc_enc}"
+        url = f"https://www.dice.com/jobs?q={q_enc}&location={loc_enc}&postedDate=14"
 
         req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
         with urllib.request.urlopen(req, timeout=12) as resp:
@@ -107,15 +108,16 @@ def fetch_dice_jobs(query: str, location: str = "Remote", limit: int = 15) -> li
     return jobs[:limit]
 
 
-def fetch_ziprecruiter_jobs(query: str, location: str = "Remote", limit: int = 10) -> list[ParsedJob]:
+def fetch_ziprecruiter_jobs(query: str, location: str = "Remote", limit: int = 9) -> list[ParsedJob]:
     """
-    Search ZipRecruiter directly by parsing public search page JSON-LD schema / HTML.
+    Search ZipRecruiter directly by parsing public search page JSON-LD schema / HTML (posted within last 14 days / 1-2 weeks).
     """
     jobs: list[ParsedJob] = []
+    limit = min(limit, 9)  # Strict initial run requirement: less than 10 items
     try:
         q_enc = urllib.parse.quote(query)
         loc_enc = urllib.parse.quote(location)
-        url = f"https://www.ziprecruiter.com/candidate/search?search={q_enc}&location={loc_enc}"
+        url = f"https://www.ziprecruiter.com/candidate/search?search={q_enc}&location={loc_enc}&days=14"
 
         req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
         with urllib.request.urlopen(req, timeout=12) as resp:
