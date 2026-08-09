@@ -11,6 +11,14 @@ from sqlalchemy.orm import Session
 from job_agent.database import ContactRecord, InterviewRecord, JobRecord
 
 
+def _ensure_utc(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 def generate_pipeline_summary(session: Session) -> dict[str, Any]:
     """
     Generate real-time metrics for the personal job search dashboard.
@@ -21,15 +29,22 @@ def generate_pipeline_summary(session: Session) -> dict[str, Any]:
     status_counts = Counter(j.status for j in all_jobs)
     platform_counts = Counter(j.source_platform for j in all_jobs)
 
-    high_score_jobs = [j for j in all_jobs if (j.match_score or 0) >= 65 and j.status in ("Saved", "Reviewing")]
-    stale_jobs = [j for j in all_jobs if j.is_stale or (j.status == "Saved" and j.date_discovered < datetime.now(timezone.utc) - timedelta(days=30))]
-
     now = datetime.now(timezone.utc)
-    stmt_interviews = select(InterviewRecord).where(InterviewRecord.interview_date >= now).order_by(InterviewRecord.interview_date.asc())
-    upcoming_interviews = list(session.scalars(stmt_interviews))
+    cutoff_30d = now - timedelta(days=30)
 
-    stmt_followups = select(JobRecord).where(JobRecord.follow_up_date.isnot(None), JobRecord.follow_up_date <= now)
-    followups_due = list(session.scalars(stmt_followups))
+    high_score_jobs = [j for j in all_jobs if (j.match_score or 0) >= 65 and j.status in ("Saved", "Reviewing")]
+    stale_jobs = [
+        j for j in all_jobs
+        if j.is_stale or (j.status == "Saved" and j.date_discovered and _ensure_utc(j.date_discovered) < cutoff_30d)
+    ]
+
+    stmt_interviews = select(InterviewRecord).order_by(InterviewRecord.interview_date.asc())
+    all_interviews = list(session.scalars(stmt_interviews))
+    upcoming_interviews = [iv for iv in all_interviews if iv.interview_date and _ensure_utc(iv.interview_date) >= now]
+
+    stmt_followups = select(JobRecord).where(JobRecord.follow_up_date.isnot(None))
+    all_followups = list(session.scalars(stmt_followups))
+    followups_due = [f for f in all_followups if f.follow_up_date and _ensure_utc(f.follow_up_date) <= now]
 
     return {
         "total_jobs": len(all_jobs),
@@ -47,10 +62,12 @@ def generate_report(session: Session, period: str = "weekly") -> str:
     Generate a text-based analytical report showing applications by status, platform sources, response rates, and follow-ups.
     """
     days = 30 if period.lower() == "monthly" else 7
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=days)
 
-    stmt = select(JobRecord).where(JobRecord.created_at >= cutoff)
-    recent_jobs = list(session.scalars(stmt))
+    stmt = select(JobRecord)
+    all_jobs = list(session.scalars(stmt))
+    recent_jobs = [j for j in all_jobs if j.created_at and _ensure_utc(j.created_at) >= cutoff]
 
     total = len(recent_jobs)
     applied = [j for j in recent_jobs if j.status == "Applied" or j.date_applied]

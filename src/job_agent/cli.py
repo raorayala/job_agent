@@ -507,7 +507,8 @@ def follow_ups_cmd() -> None:
         table.add_column("Company")
 
         for j in jobs:
-            is_overdue = j.follow_up_date and j.follow_up_date <= now
+            f_date_utc = j.follow_up_date.replace(tzinfo=timezone.utc) if j.follow_up_date and j.follow_up_date.tzinfo is None else j.follow_up_date
+            is_overdue = f_date_utc and f_date_utc <= now
             date_str = j.follow_up_date.strftime("%Y-%m-%d") + (" [OVERDUE]" if is_overdue else "")
             table.add_row(str(j.id), j.status, date_str, j.title[:35], j.company[:25])
 
