@@ -9,6 +9,7 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+from sqlalchemy import select
 
 from job_agent import __version__
 from job_agent.answer_service import add_answer, list_answers, suggest_answer
