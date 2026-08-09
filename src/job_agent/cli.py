@@ -27,6 +27,7 @@ from job_agent.interview_service import add_interview, list_interviews, prepare_
 from job_agent.logging_config import setup_logging
 from job_agent.matcher import recommendation_for_score, score_job
 from job_agent.models import ApplicationStatus, MatchExplanation, ParsedJob, Recommendation
+from job_agent.platform_fetcher import search_and_import_jobs
 from job_agent.report_service import generate_pipeline_summary, generate_report
 from job_agent.resume_tailor import generate_cover_letter, tailor_resume
 
@@ -557,6 +558,55 @@ def search_links_cmd(
         console.print("[green]Opened search links in your web browser![/green]")
     else:
         console.print("[dim]Tip: Add --open flag to open all links directly in your default browser.[/dim]")
+
+
+@app.command("fetch-jobs")
+def fetch_jobs_cmd(
+    platforms: str = typer.Option("dice,ziprecruiter", "--platforms", help="Comma-separated platforms to search (e.g., 'dice,ziprecruiter')"),
+    limit: int = typer.Option(15, "--limit", help="Max jobs per platform"),
+) -> None:
+    """Fetch and search jobs directly from Dice, ZipRecruiter, and other job sites using config.yaml skills (no Gmail needed)."""
+    _, SessionLocal = _init_context()
+    profile = load_candidate_profile()
+    session = SessionLocal()
+
+    platform_list = [p.strip().lower() for p in platforms.split(",") if p.strip()]
+
+    console.print(f"[cyan]Fetching jobs directly from platforms: {', '.join(platform_list)}...[/cyan]")
+    try:
+        results = search_and_import_jobs(
+            session=session,
+            profile=profile,
+            platforms=platform_list,
+            limit_per_platform=limit,
+        )
+
+        if not results:
+            console.print("[yellow]No new jobs found from direct platform search.[/yellow]")
+            return
+
+        table = Table(title="Fetched Platform Jobs")
+        table.add_column("ID", style="cyan")
+        table.add_column("Score", style="bold green")
+        table.add_column("Title")
+        table.add_column("Company")
+        table.add_column("Platform")
+        table.add_column("Duplicate?")
+
+        for rec, match, dupe in results:
+            table.add_row(
+                str(rec.id),
+                f"{match.score:.0f}",
+                rec.title[:35],
+                rec.company[:25],
+                rec.source_platform,
+                "yes" if dupe.is_duplicate else "",
+            )
+
+        console.print(table)
+        console.print(f"[bold green]Successfully imported {len(results)} jobs from direct platform search![/bold green]")
+    finally:
+        session.close()
 
 
 @app.command("add-contact")
