@@ -1,125 +1,235 @@
-# 10 — User Guide
+# User Usage Guide — Job Search Agent
 
-## 1. What this tool does
+Local-first, private personal AI job search assistant.
 
-Helps you:
+---
 
-- Pull job alerts from Gmail (when sync is enabled)
-- Score them against your profile
-- Create tailored resume drafts from your **real** experience
-- Track applications locally
+## 1. Executive Overview
 
-It does **not** apply to jobs for you.
+The **Job Search Agent** is a private, local-first personal career assistant designed to help you manage your targeted job applications. All data, database records, resumes, cover letters, application answers, and notes remain **100% local on your computer**.
 
-## 2. One-time setup
+### Key Capabilities
+- **Job Discovery (4 Methods)**:
+  1. Direct Platform Search (`fetch-jobs` for Dice & ZipRecruiter)
+  2. 1-Click Chrome Bookmarklet (`serve` on `localhost:8000`)
+  3. Pre-formatted Browser Query Links (`search-links --open`)
+  4. Gmail Alert Sync (`sync-gmail` via OAuth 2.0)
+- **Explainable Match Engine**: 0–100 weighted scoring comparing job details against your candidate profile AND master DOCX resume text.
+- **Truthful Document Tailoring**: Creates ATS-optimized DOCX resumes, cover letters, and summary text files in `~/Desktop/Jobs Applied/<Company>/<Job Title>/`.
+- **Application Tracking & Answer Library**: Track application statuses, networking contacts, interview prep sheets, and reusable application answers.
+- **Privacy & Safety**: Zero auto-submission. Requires explicit user confirmation for all application updates and data deletion.
 
-### 2.1 Install
+---
 
+## 2. Environment & Initial Setup
+
+### 2.1 Installation
 ```powershell
 cd C:\Users\Admin\Projects\job-search-agent
-py -3 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
 ```
 
-### 2.2 Environment
+### 2.2 Configuration Files
+1. `.env`:
+   ```ini
+   MASTER_RESUME_PATH=C:/Users/Admin/Desktop/Jobs Applied/master_resume.docx
+   JOBS_APPLIED_FOLDER=C:/Users/Admin/Desktop/Jobs Applied
+   DATABASE_PATH=C:/Users/Admin/Projects/job-search-agent/data/jobs.db
+   LLM_PROVIDER=none
+   ```
+2. `config.yaml`: Configure target job titles, required/preferred skills, years of experience, locations, work modes, salary range, and exclusion lists.
+   ```yaml
+   profile:
+     target_titles:
+       - Senior Backend Engineer
+       - Java Developer
+     required_skills:
+       - Java
+       - SpringBoot
+       - Python
+     master_resumes:
+       java: C:/Users/Admin/Desktop/Java_Resume.docx
+       python: C:/Users/Admin/Desktop/Python_Resume.docx
+   ```
 
-```powershell
-copy .env.example .env
-```
-
-Edit `.env`:
-
-- `MASTER_RESUME_PATH` — your master DOCX  
-- `JOBS_APPLIED_FOLDER` — e.g. `C:\Users\Admin\Desktop\Jobs Applied`  
-- `LLM_PROVIDER=none`  
-
-### 2.3 Profile
-
-Edit `config.yaml` → `profile` section (titles, skills, locations, salary, exclusions).
-
-### 2.4 Master resume
-
-Save your master resume DOCX where `.env` points. Keep a clean, complete version — tailoring will only emphasize what is already true.
-
-### 2.5 Gmail (needed for sync)
-
-1. Google Cloud Console → enable Gmail API  
-2. OAuth Desktop client → download JSON as `credentials.json` in the project folder  
-3. Run setup:
-
+### 2.3 Run Setup Check
 ```powershell
 python -m job_agent setup
 python -m job_agent profile
 ```
 
-## 3. Commands available now (Milestone 1)
+---
 
-| Command | What it does |
-|---------|----------------|
-| `python -m job_agent setup` | Creates DB/folders; prints OAuth checklist |
-| `python -m job_agent profile` | Shows loaded profile |
-| `python -m job_agent jobs` | Lists tracked jobs |
-| `python -m job_agent statuses` | Lists allowed statuses |
-| `python -m job_agent mark-applied <id> --confirm` | Records that **you** applied |
+## 3. How to Discover & Import Jobs (No Gmail Required)
 
-Coming soon (will say “not ready yet”):
+### Method A: 1-Click Chrome Bookmarklet (Recommended)
+1. In terminal, start the local capture server:
+   ```powershell
+   python -m job_agent serve
+   ```
+2. In Google Chrome, press `Ctrl + Shift + B` to show the Bookmarks Bar.
+3. Right-click the Bookmarks Bar -> Click **Add page...**
+   - **Name**: `Capture Job`
+   - **URL**: Paste the JavaScript snippet below:
 
-- `sync-gmail`
-- `analyze`
-- `tailor`
-- `dashboard`
+```javascript
+javascript:(function(){
+  const title = document.querySelector('h1')?.innerText || document.title;
+  const company = document.querySelector('[data-testid="inlineHeader-companyName"], .companyName, .company-name, [data-cy="search-result-company-name"]')?.innerText || "Unknown";
+  const url = window.location.href;
+  const description = document.querySelector('#jobDescriptionText, .job-description, .description, #job-description')?.innerText || document.body.innerText.slice(0, 3000);
 
-## 4. Recommended daily workflow (after full MVP)
+  fetch('http://localhost:8000/capture', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({title, company, url, description})
+  })
+  .then(res => res.json())
+  .then(data => alert(`✅ Job Saved to Job Agent!\n\nID: #${data.job_id}\nTitle: ${data.title}\nCompany: ${data.company}\nMatch Score: ${data.score}/100`))
+  .catch(err => alert('❌ Error: Make sure "python -m job_agent serve" is running in terminal.'));
+})();
+```
 
+4. When viewing any job on **Indeed, Dice, ZipRecruiter, or Glassdoor**, click **`Capture Job`** on your Chrome bar to save it instantly.
+
+### Method B: Direct Platform Search (`fetch-jobs`)
+Fetch jobs directly from platforms without opening a browser:
+```powershell
+python -m job_agent fetch-jobs --platforms dice
+```
+
+### Method C: Launch Automated Browser Searches (`search-links`)
+Open search result tabs tailored to your `config.yaml` skills in Chrome:
+```powershell
+python -m job_agent search-links --open
+```
+
+### Method D: Direct URL Import (`add-job`)
+```powershell
+python -m job_agent add-job --url "https://www.dice.com/job-detail/sample-123" --title "Senior Backend Java Engineer" --company "Acme Corp" --description "Looking for Java, Spring Boot, and SQL..."
+```
+
+### Method E: Gmail Alert Sync (`sync-gmail`)
+If you have set up Google OAuth `credentials.json`:
 ```powershell
 python -m job_agent sync-gmail
-python -m job_agent analyze
-python -m job_agent jobs --min-score 70
-python -m job_agent tailor 123
-# apply manually on the job site
-python -m job_agent mark-applied 123 --confirm
 ```
 
-Dry runs:
+---
 
+## 4. Analysis, Tailoring & Application Workflow
+
+### Step 1: Re-Score All Jobs Against Profile & Resume
 ```powershell
-python -m job_agent sync-gmail --dry-run
-python -m job_agent tailor 123 --dry-run
+python -m job_agent analyze
 ```
 
-## 5. Understanding scores
-
-| Recommendation | Meaning |
-|----------------|---------|
-| Strong match | High overlap — prioritize |
-| Worth reviewing | Partial fit |
-| Low match | Weak fit |
-| Excluded | Hits an exclusion rule |
-
-Always read missing skills and concerns before applying.
-
-## 6. Where files go
-
-```text
-Desktop\Jobs Applied\
-  <Company>\
-    <Job Title>\
-      Company_JobTitle_YYYY-MM-DD_Resume.docx
+### Step 2: List Top-Matching Opportunities
+```powershell
+python -m job_agent jobs --min-score 60
 ```
 
-Database: `data\jobs.db` (local).
+### Step 3: Generate ATS Tailored Resume & Cover Letter
+```powershell
+python -m job_agent tailor <job_id>
+```
+*Creates documents in `~/Desktop/Jobs Applied/<Company>/<Job Title>/`:*
+- `Company_JobTitle_Resume.docx`
+- `Company_JobTitle_Cover_Letter.docx`
+- `Application_Summary.txt`
 
-## 7. Safety reminders
+### Step 4: Apply Manually & Confirm Status
+After submitting your application on the employer site:
+```powershell
+python -m job_agent mark-applied <job_id> --confirm
+```
 
-- Never share `credentials.json`, `token.json`, or `.env`
-- Review every tailored resume before uploading to employers
-- Only use `--confirm` after you have actually applied
-- Prefer `LLM_PROVIDER=none` to keep data on your machine
+---
 
-## 8. Getting help
+## 5. Personal Assistant Features
 
-- Project docs index: [docs/README.md](README.md)
-- Requirements: [01-REQUIREMENTS.md](01-REQUIREMENTS.md)
-- Security: [06-SECURITY-PRIVACY.md](06-SECURITY-PRIVACY.md)
-- Repo: https://github.com/raorayala/job_agent
+### Networking Contacts
+```powershell
+# Add contact
+python -m job_agent add-contact "Sarah Jenkins" --role "Technical Recruiter" --company "Acme Corp" --email "s.jenkins@acme.com" --job-id 25
+
+# List contacts
+python -m job_agent contacts
+```
+
+### Interview Tracking & Preparation
+```powershell
+# Schedule interview
+python -m job_agent add-interview 25 "2026-08-15 10:00" --type "Technical" --participants "Lead Architect"
+
+# Generate local interview prep sheet
+python -m job_agent prepare-interview 25
+```
+
+### Application Answer Library
+```powershell
+# List answers
+python -m job_agent answers
+
+# Save approved answer
+python -m job_agent add-answer "Notice Period" "2 weeks notice"
+
+# Suggest draft answer for application question
+python -m job_agent suggest-answer 25 "Why are you interested in this role?"
+```
+
+### Search Dashboard & Pipeline Reports
+```powershell
+# View pipeline dashboard
+python -m job_agent dashboard
+
+# View weekly or monthly search report
+python -m job_agent report --period weekly
+```
+
+### Local Backup & Data Management
+```powershell
+# Create ZIP backup
+python -m job_agent backup
+
+# Restore from backup archive
+python -m job_agent restore backups/job_agent_backup_20260808_180000.zip
+
+# Delete a single job
+python -m job_agent delete-job 25
+
+# Purge all local data (requires confirmation)
+python -m job_agent purge-data
+```
+
+---
+
+## 6. Complete CLI Command Reference
+
+| Command | Usage | Description |
+| :--- | :--- | :--- |
+| **`setup`** | `python -m job_agent setup` | Verify DB, folders, and configuration |
+| **`profile`** | `python -m job_agent profile` | Display current candidate profile & resume paths |
+| **`serve`** | `python -m job_agent serve` | Start local HTTP capture server for 1-click Chrome bookmarklet |
+| **`search-links`** | `python -m job_agent search-links [--open]` | Generate platform query links from `config.yaml` |
+| **`fetch-jobs`** | `python -m job_agent fetch-jobs [--platforms dice]` | Search and import jobs directly from job sites |
+| **`add-job`** | `python -m job_agent add-job --url URL --title T --company C` | Manually import job listing details |
+| **`sync-gmail`** | `python -m job_agent sync-gmail [--dry-run]` | Sync job alerts from Gmail |
+| **`analyze`** | `python -m job_agent analyze` | Re-score all database records against profile and resume |
+| **`jobs`** | `python -m job_agent jobs [--min-score 60]` | List saved jobs and match scores |
+| **`tailor`** | `python -m job_agent tailor <job_id>` | Generate ATS tailored resume & cover letter |
+| **`mark-applied`** | `python -m job_agent mark-applied <job_id> --confirm` | Mark job as applied |
+| **`add-contact`** | `python -m job_agent add-contact "Name" --job-id ID` | Store networking contact locally |
+| **`contacts`** | `python -m job_agent contacts` | List saved networking contacts |
+| **`add-interview`** | `python -m job_agent add-interview ID "YYYY-MM-DD HH:MM"` | Record an upcoming interview |
+| **`prepare-interview`** | `python -m job_agent prepare-interview ID` | Generate interview preparation DOCX sheet |
+| **`answers`** | `python -m job_agent answers` | List application answer library |
+| **`add-answer`** | `python -m job_agent add-answer "Question" "Answer"` | Save reusable question answer |
+| **`suggest-answer`** | `python -m job_agent suggest-answer ID "Question"` | Generate factual draft answer for application |
+| **`dashboard`** | `python -m job_agent dashboard` | Show pipeline status and upcoming interviews |
+| **`report`** | `python -m job_agent report [--period weekly]` | Generate analytical search report |
+| **`backup`** | `python -m job_agent backup [PATH]` | Create local ZIP backup archive |
+| **`restore`** | `python -m job_agent restore PATH` | Restore local database and config from backup |
+| **`delete-job`** | `python -m job_agent delete-job ID` | Delete job record with confirmation |
+| **`purge-data`** | `python -m job_agent purge-data` | Purge local database records with confirmation |
