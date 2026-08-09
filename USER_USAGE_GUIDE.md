@@ -66,15 +66,47 @@ javascript:(function(){
 
 ---
 
-## 🚀 Key Feature Highlights
+## 🛠️ Maintenance & Backup Procedures
 
-### 1. Initial Batch Constraints & Freshness Filter
-- **Batch Size Limit**: `fetch-jobs` defaults to **9 items per platform** (< 10 jobs per run) to ensure focused, manageable initial reviews.
-- **1–2 Week Freshness**: All generated search links (`search-links`) and direct fetch queries (`fetch-jobs`) filter specifically for jobs posted within the **last 1 to 2 weeks** (14 days max).
-- **Chrome Launching**: Running `search-links --open --browser chrome` explicitly launches Google Chrome on Windows, bypassing Edge browser routing.
+- **Local Backup Archive**:
+  ```powershell
+  python -m job_agent backup [OPTIONAL_OUTPUT_PATH.zip]
+  ```
+  Creates a timestamped local ZIP backup of `data/jobs.db`, `.env`, `config.yaml`, and output documents.
+
+- **Restore from Backup**:
+  ```powershell
+  python -m job_agent restore path/to/backup.zip
+  ```
+
+- **Delete Job & Output Artifacts**:
+  ```powershell
+  python -m job_agent delete-job <job_id> --confirm
+  ```
+
+- **Purge All Database Records**:
+  ```powershell
+  python -m job_agent purge-data --confirm
+  ```
+
+- **Automated Daily Sync (Task Scheduler)**:
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File scripts/schedule_daily_sync.ps1
+  ```
+
+---
+
+## 🔐 Security & Privacy Safeguards
+
+1. **Air-Gapped Local Storage**: All databases, tokens, resumes, cover letters, contacts, and logs remain 100% on your computer.
+2. **Gmail Read-Only Scope**: Uses `gmail.readonly` OAuth 2.0 scope only; cannot send or modify emails.
+3. **Localhost Endpoint Binding**: Capture server (`serve`) binds strictly to `127.0.0.1:8000`.
+4. **Git Exclusion (`.gitignore`)**: Prevents accidental commits of `.env`, `credentials.json`, `token.json`, `jobs.db`, and generated DOCX resumes.
+5. **Truthfulness Guarantee**: Resumes and cover letters use only verified experience from your master DOCX resume. Zero hallucinated jobs, titles, or dates.
+6. **Zero Auto-Apply**: Human-in-the-loop required for all application submissions.
 
 ---
 
 ## 📖 Complete Command Reference
 
-For a full reference of all available CLI commands, options, and parameters, please see the **[CLI Command Cheat Sheet](CLI_CHEAT_SHEET.md)**.
+For a complete reference of all available CLI commands, options, and flags, see the **[CLI Command Cheat Sheet](CLI_CHEAT_SHEET.md)**.

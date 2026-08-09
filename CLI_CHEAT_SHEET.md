@@ -1,6 +1,6 @@
 # CLI Command Cheat Sheet — Job Search Agent
 
-A comprehensive reference guide for all CLI commands in the **Job Search Agent** local-first personal career assistant.
+A comprehensive reference guide for all CLI commands, maintenance procedures, and security safeguards in the **Job Search Agent** local-first personal career assistant.
 
 ---
 
@@ -38,12 +38,12 @@ python -m job_agent follow-ups
 
 ---
 
-## 📋 Categorized Cheat Sheet
+## 📋 Categorized Command Reference
 
 ### 1. Setup & Environment
 | Command | Description | Default / Options |
 | :--- | :--- | :--- |
-| `python -m job_agent setup` | Initialize local folders, SQLite DB, verify config and OAuth settings | `--no-copy-env` |
+| `python -m job_agent setup` | Initialize local runtime folders, SQLite DB schema, verify config and OAuth credentials | `--no-copy-env` |
 | `python -m job_agent profile` | Display loaded candidate profile, target titles, skills, and multi-resumes | None |
 | `python -m job_agent statuses` | List supported application lifecycle statuses | None |
 
@@ -52,7 +52,7 @@ python -m job_agent follow-ups
 ### 2. Job Discovery & Ingestion
 | Command | Description | Key Parameters |
 | :--- | :--- | :--- |
-| `python -m job_agent serve` | Start local HTTP server (`http://localhost:8000`) for 1-click Chrome bookmarklet capture | `--port 8000` |
+| `python -m job_agent serve` | Start local HTTP server (`http://127.0.0.1:8000`) for 1-click Chrome bookmarklet capture | `--port 8000` |
 | `python -m job_agent search-links` | Generate search URLs for Indeed, Dice, ZipRecruiter, LinkedIn & Glassdoor (jobs posted in last 1-2 weeks) | `--open`, `--browser chrome` |
 | `python -m job_agent fetch-jobs` | Directly search job platforms without browser (<10 jobs, <1-2 weeks old) | `--platforms dice,ziprecruiter`, `--limit 9` |
 | `python -m job_agent sync-gmail` | Fetch and parse job alert emails from Gmail using OAuth 2.0 | `--max-results 25`, `--dry-run` |
@@ -104,17 +104,44 @@ python -m job_agent follow-ups
 
 ---
 
-### 8. Data Maintenance & Backup
+### 8. Maintenance, Backup & Data Management
 | Command | Description | Key Parameters |
 | :--- | :--- | :--- |
-| `python -m job_agent backup` | Create full local zip backup of SQLite DB, settings, and documents | None |
-| `python -m job_agent restore <backup_zip>` | Restore database and settings from local backup archive | Required: ZIP file path |
-| `python -m job_agent delete-job <job_id>` | Delete a job record and its generated output files | `--confirm` |
-| `python -m job_agent purge-data` | Purge all local data and reset SQLite database | `--confirm` |
+| `python -m job_agent backup [PATH]` | Create full local timestamped ZIP backup of SQLite DB, settings, `.env`, and documents | Optional output ZIP path |
+| `python -m job_agent restore <backup_zip>` | Restore SQLite database and settings from a previously created ZIP backup archive | Required: ZIP file path |
+| `python -m job_agent delete-job <job_id>` | Safely delete a single job record from SQLite along with its generated output files | `--confirm` |
+| `python -m job_agent purge-data` | Complete wipe/purge of all database records (jobs, contacts, interviews, answers) | `--confirm` |
+| `powershell -ExecutionPolicy Bypass -File scripts/schedule_daily_sync.ps1` | Configure Windows Task Scheduler for daily background syncs (`sync-gmail` & `analyze`) | None |
 
 ---
 
 ## 🛠️ Command Details & Flags Reference
+
+### `backup` & `restore`
+```powershell
+# Create a full local timestamped ZIP backup archive
+python -m job_agent backup
+
+# Create a backup at a custom path
+python -m job_agent backup C:\Backups\my_job_agent_backup.zip
+
+# Restore database and configuration from backup
+python -m job_agent restore C:\Backups\my_job_agent_backup.zip
+```
+*Note: Backups archive your SQLite database (`data/jobs.db`), `.env` file, `config.yaml`, and tailored document outputs into a single encrypted-capable ZIP file.*
+
+---
+
+### `delete-job` & `purge-data`
+```powershell
+# Delete a single job record and its generated output folder (requires confirmation)
+python -m job_agent delete-job 28 --confirm
+
+# Purge ALL local database records and reset SQLite schema (requires confirmation)
+python -m job_agent purge-data --confirm
+```
+
+---
 
 ### `search-links`
 ```powershell
@@ -138,7 +165,6 @@ Options:
   --limit INTEGER         Max jobs per platform (enforces <10 jobs per run) [default: 9]
   --help                  Show help message
 ```
-*Note: Direct platform search automatically filters for jobs posted within the last 14 days and applies strict batch limits (< 10 items) for safe initial processing.*
 
 ---
 
@@ -156,9 +182,31 @@ Options:
 
 ---
 
-## 🛡️ Safety & Safeguards Summary
+## 🔐 Security & Privacy Safeguards Reference
 
-1. **Zero Auto-Apply**: The agent **never** fills out forms or submits job applications automatically.
-2. **Explicit Confirmation**: Action commands like `mark-applied`, `delete-job`, and `purge-data` require `--confirm`.
-3. **Truthful Documents**: Tailored resumes and interview guides use **100% factual content** from your master DOCX resume; zero hallucinated experience or credentials.
-4. **Local Data Only**: All databases, tokens, resumes, contacts, and logs remain strictly on your local filesystem.
+### 1. Air-Gapped Local-First Data Storage
+- **100% Local Filesystem**: All job listings, SQLite database records (`data/jobs.db`), candidate profiles, master DOCX resumes, tailored applications, contacts, and logs remain stored strictly on your local machine.
+- **Zero Cloud Sync & Telemetry**: No user accounts, sign-in, remote databases, analytics tracking, advertising, or external data uploads.
+
+### 2. Google OAuth 2.0 Least Privilege
+- **Read-Only Scope**: Uses `https://www.googleapis.com/auth/gmail.readonly` exclusively.
+- **No Email Sending or Modifying**: The agent cannot send, edit, or delete emails in your Gmail account.
+- **Local Credentials**: OAuth client secrets (`credentials.json`) and token cache (`token.json`) are stored locally and ignored by Git.
+
+### 3. Localhost Capture Server Security (`serve`)
+- **Strict Local Binding**: The capture endpoint binds exclusively to `127.0.0.1` (`localhost:8000`).
+- **User Review Guard**: Captured listings require user confirmation before saving and are never auto-submitted.
+
+### 4. Git Version Control Exclusion Guardrails (`.gitignore`)
+- Automatically excludes sensitive assets from version control:
+  - Secrets & Credentials: `.env`, `credentials.json`, `token.json`
+  - Local Databases & Backups: `*.db`, `*.sqlite`, `data/`, `backups/`
+  - Personal Output Files: `~/Desktop/Jobs Applied/`, generated DOCX/PDF resumes, log files
+
+### 5. Truthfulness Safeguards
+- **Zero Hallucination Policy**: Tailored resumes and cover letters reorder and emphasize only verified experience from your master DOCX resume. Never invents employers, titles, dates, or skills.
+- **Draft Application Answers**: Suggested answers (`suggest-answer`) are explicitly tagged as `[DRAFT]` for user review before submission.
+
+### 6. Human-In-The-Loop Approval Gates
+- **Zero Auto-Apply**: The agent **never** auto-fills forms or auto-submits job applications.
+- **Confirmation Flags**: Destructive and status-changing actions require explicit `--confirm` parameters.
