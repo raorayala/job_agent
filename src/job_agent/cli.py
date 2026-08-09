@@ -14,6 +14,7 @@ from job_agent import __version__
 from job_agent.answer_service import add_answer, list_answers, suggest_answer
 from job_agent.application_tracker import list_tracked_jobs, mark_applied, record_parsed_job
 from job_agent.backup_service import create_backup, delete_job_record, purge_all_data, restore_backup
+from job_agent.browser_capture import start_capture_server
 from job_agent.config import (
     ensure_runtime_dirs,
     get_settings,
@@ -607,6 +608,28 @@ def fetch_jobs_cmd(
         console.print(f"[bold green]Successfully imported {len(results)} jobs from direct platform search![/bold green]")
     finally:
         session.close()
+
+
+@app.command("serve")
+def serve_cmd(
+    port: int = typer.Option(8000, "--port", help="Local HTTP port for browser bookmarklet capture"),
+) -> None:
+    """Start local HTTP server on http://localhost:8000/capture for 1-click browser bookmarklet captures."""
+    import time
+    _init_context()
+    server = start_capture_server(host="127.0.0.1", port=port)
+    console.print(
+        f"[bold green]Local Browser Capture Server is running![/bold green]\n"
+        f"  Listening on: [cyan]http://localhost:{port}/capture[/cyan]\n"
+        f"  Keep this terminal open while capturing jobs from your browser.\n"
+        f"  Press [bold]Ctrl+C[/bold] to stop server."
+    )
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        server.shutdown()
+        console.print("\n[yellow]Local capture server stopped.[/yellow]")
 
 
 @app.command("add-contact")

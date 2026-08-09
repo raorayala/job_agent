@@ -21,6 +21,7 @@ platforms:
 # Candidate profile — customize before running analyze/tailor
 profile:
   target_titles:
+    - java
     - Senior Backend Engineer
     - Java Developer
     - Senior Software Engineer
