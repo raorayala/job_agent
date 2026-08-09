@@ -77,6 +77,13 @@ class JobRecord(Base):
     title_normalized: Mapped[str | None] = mapped_column(String(300), nullable=True)
     location_normalized: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
+    priority: Mapped[float] = mapped_column(Float, default=50.0)
+    is_stale: Mapped[bool] = mapped_column(Boolean, default=False)
+    deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    user_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    custom_title_override: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    custom_company_override: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
@@ -95,6 +102,53 @@ class ProcessedEmail(Base):
     jobs_extracted: Mapped[int] = mapped_column(Integer, default=0)
 
 
+class ContactRecord(Base):
+    """Locally stored networking contact linked to jobs."""
+
+    __tablename__ = "contacts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    name: Mapped[str] = mapped_column(String(200))
+    role: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    company: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    linkedin_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class InterviewRecord(Base):
+    """Locally stored interview events and preparation notes."""
+
+    __tablename__ = "interviews"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_id: Mapped[int] = mapped_column(Integer)
+    interview_date: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    interview_type: Mapped[str] = mapped_column(String(100), default="Screening")
+    participants: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    prep_tasks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class ApplicationAnswer(Base):
+    """Reusable application question & answer library."""
+
+    __tablename__ = "application_answers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    original_question: Mapped[str] = mapped_column(Text)
+    normalized_question: Mapped[str] = mapped_column(Text)
+    approved_answer: Mapped[str] = mapped_column(Text)
+    source_context: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    tags: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
 def _sqlite_enable_foreign_keys(dbapi_connection: Any, _connection_record: Any) -> None:
     cursor = dbapi_connection.cursor()
     cursor.execute("PRAGMA foreign_keys=ON")
@@ -110,7 +164,7 @@ def create_db_engine(db_path: str | Path) -> Engine:
 
 
 def _migrate_sqlite_schema(engine: Engine) -> None:
-    """Migrate legacy SQLite schema if uq_gmail_message_id unique constraint exists on jobs table."""
+    """Migrate legacy SQLite schema and ensure new columns exist."""
     try:
         with engine.begin() as conn:
             res = conn.execute(text("SELECT sql FROM sqlite_master WHERE tbl_name='jobs' AND type='table'")).fetchone()
@@ -147,15 +201,37 @@ def _migrate_sqlite_schema(engine: Engine) -> None:
                         company_normalized VARCHAR(200),
                         title_normalized VARCHAR(300),
                         location_normalized VARCHAR(200),
+                        priority FLOAT DEFAULT 50.0,
+                        is_stale BOOLEAN DEFAULT 0,
+                        deadline DATETIME,
+                        user_notes TEXT,
+                        custom_title_override VARCHAR(300),
+                        custom_company_override VARCHAR(200),
                         created_at DATETIME NOT NULL,
                         updated_at DATETIME NOT NULL,
                         CONSTRAINT uq_job_url_normalized UNIQUE (job_url_normalized)
                     );
                 """))
-                conn.execute(text("INSERT INTO jobs_new SELECT * FROM jobs;"))
+                conn.execute(text("INSERT INTO jobs_new (id, title, company, location, source_platform, job_url, job_url_normalized, salary, employment_type, description, date_discovered, date_applied, follow_up_date, status, match_score, recommendation, match_summary, matched_skills, missing_skills, concerns, tailored_resume_path, notes, gmail_message_id, is_duplicate, duplicate_of_id, duplicate_reason, company_normalized, title_normalized, location_normalized, created_at, updated_at) SELECT id, title, company, location, source_platform, job_url, job_url_normalized, salary, employment_type, description, date_discovered, date_applied, follow_up_date, status, match_score, recommendation, match_summary, matched_skills, missing_skills, concerns, tailored_resume_path, notes, gmail_message_id, is_duplicate, duplicate_of_id, duplicate_reason, company_normalized, title_normalized, location_normalized, created_at, updated_at FROM jobs;"))
                 conn.execute(text("DROP TABLE jobs;"))
                 conn.execute(text("ALTER TABLE jobs_new RENAME TO jobs;"))
                 conn.execute(text("PRAGMA foreign_keys=ON;"))
+
+            # Add missing columns safely if table already existed without them
+            columns_res = conn.execute(text("PRAGMA table_info(jobs);")).fetchall()
+            existing_cols = {row[1] for row in columns_res}
+
+            missing_additions = [
+                ("priority", "FLOAT DEFAULT 50.0"),
+                ("is_stale", "BOOLEAN DEFAULT 0"),
+                ("deadline", "DATETIME"),
+                ("user_notes", "TEXT"),
+                ("custom_title_override", "VARCHAR(300)"),
+                ("custom_company_override", "VARCHAR(200)"),
+            ]
+            for col_name, col_def in missing_additions:
+                if col_name not in existing_cols:
+                    conn.execute(text(f"ALTER TABLE jobs ADD COLUMN {col_name} {col_def};"))
     except Exception:
         pass
 

@@ -11,18 +11,23 @@ from rich.panel import Panel
 from rich.table import Table
 
 from job_agent import __version__
-from job_agent.application_tracker import list_tracked_jobs, mark_applied
+from job_agent.answer_service import add_answer, list_answers, suggest_answer
+from job_agent.application_tracker import list_tracked_jobs, mark_applied, record_parsed_job
+from job_agent.backup_service import create_backup, delete_job_record, purge_all_data, restore_backup
 from job_agent.config import (
     ensure_runtime_dirs,
     get_settings,
     load_candidate_profile,
     load_yaml_config,
 )
-from job_agent.database import get_job, init_db, list_jobs
+from job_agent.contact_service import add_contact, list_contacts
+from job_agent.database import JobRecord, get_job, init_db, list_jobs
 from job_agent.gmail_client import GmailNotConfiguredError, sync_job_emails
+from job_agent.interview_service import add_interview, list_interviews, prepare_interview_doc
 from job_agent.logging_config import setup_logging
 from job_agent.matcher import recommendation_for_score, score_job
 from job_agent.models import ApplicationStatus, MatchExplanation, ParsedJob, Recommendation
+from job_agent.report_service import generate_pipeline_summary, generate_report
 from job_agent.resume_tailor import generate_cover_letter, tailor_resume
 
 app = typer.Typer(
@@ -387,12 +392,390 @@ def mark_applied_cmd(
 
 @app.command("dashboard")
 def dashboard_cmd() -> None:
-    """Optional Streamlit dashboard (install extras: pip install .[dashboard])."""
-    console.print(
-        "[yellow]Optional dashboard[/yellow] arrives after CLI workflows are solid.\n"
-        "Install later with: [bold]pip install -e \".[dashboard]\"[/bold]"
-    )
-    raise typer.Exit(code=2)
+    """Show personal job search pipeline summary, high score opportunities, follow-ups due, and upcoming interviews."""
+    _, SessionLocal = _init_context()
+    session = SessionLocal()
+    try:
+        summary = generate_pipeline_summary(session)
+
+        console.print(Panel(
+            f"[bold cyan]Job Search Pipeline Summary[/bold cyan]\n"
+            f"Total Tracked Jobs: [bold]{summary['total_jobs']}[/bold] | "
+            f"High-Score Opportunities: [bold green]{len(summary['high_score_jobs'])}[/bold green] | "
+            f"Stale Jobs: [bold yellow]{summary['stale_jobs_count']}[/bold yellow]",
+            title="Personal Assistant Dashboard",
+        ))
+
+        # Status Table
+        s_table = Table(title="Application Status Breakdown")
+        s_table.add_column("Status", style="bold")
+        s_table.add_column("Count", justify="right")
+        for st, count in summary["status_counts"].items():
+            s_table.add_row(st, str(count))
+        console.print(s_table)
+
+        # High-score jobs table
+        if summary["high_score_jobs"]:
+            h_table = Table(title="High-Score Saved Opportunities")
+            h_table.add_column("ID", style="cyan")
+            h_table.add_column("Score", style="bold green")
+            h_table.add_column("Title")
+            h_table.add_column("Company")
+            h_table.add_column("Platform")
+            for j in summary["high_score_jobs"][:10]:
+                h_table.add_row(str(j.id), f"{j.match_score:.0f}", j.title[:35], j.company[:25], j.source_platform)
+            console.print(h_table)
+
+        # Upcoming interviews
+        if summary["upcoming_interviews"]:
+            i_table = Table(title="Upcoming Interviews")
+            i_table.add_column("Job ID", style="cyan")
+            i_table.add_column("Date", style="bold yellow")
+            i_table.add_column("Type")
+            i_table.add_column("Participants")
+            for iv in summary["upcoming_interviews"]:
+                i_table.add_row(str(iv.job_id), iv.interview_date.strftime("%Y-%m-%d %H:%M"), iv.interview_type, iv.participants or "-")
+            console.print(i_table)
+
+        if summary["followups_due"]:
+            console.print(f"[bold yellow]Follow-ups Due ({len(summary['followups_due'])}):[/bold yellow]")
+            for f in summary["followups_due"]:
+                console.print(f" - Job #{f.id}: {f.title} @ {f.company} (Follow-up date: {f.follow_up_date.strftime('%Y-%m-%d')})")
+    finally:
+        session.close()
+
+
+@app.command("report")
+def report_cmd(
+    period: str = typer.Option("weekly", "--period", help="Report period: 'weekly' or 'monthly'"),
+) -> None:
+    """Generate local report showing applications by status, platform sources, and interview response rates."""
+    _, SessionLocal = _init_context()
+    session = SessionLocal()
+    try:
+        report_text = generate_report(session, period=period)
+        console.print(Panel(report_text, title=f"Job Search Report ({period.capitalize()})"))
+    finally:
+        session.close()
+
+
+@app.command("onboard")
+def onboard_cmd() -> None:
+    """Interactively create or update the candidate profile from user-confirmed inputs."""
+    settings, _ = _init_context()
+    profile = load_candidate_profile()
+
+    console.print("[bold cyan]Interactive Candidate Profile Onboarding[/bold cyan]")
+    target_titles_str = typer.prompt("Target Job Titles (comma separated)", default=", ".join(profile.target_titles))
+    req_skills_str = typer.prompt("Required Skills (comma separated)", default=", ".join(profile.required_skills))
+    pref_skills_str = typer.prompt("Preferred Skills (comma separated)", default=", ".join(profile.preferred_skills))
+    exp_years = typer.prompt("Years of Experience", type=int, default=profile.years_experience)
+    locations_str = typer.prompt("Preferred Locations (comma separated)", default=", ".join(profile.locations))
+    salary_min = typer.prompt("Target Minimum Salary (USD)", type=int, default=profile.salary_min or 120000)
+
+    console.print("\n[bold green]Updated Profile Configuration Preview:[/bold green]")
+    console.print(f" Target Titles: {target_titles_str}")
+    console.print(f" Required Skills: {req_skills_str}")
+    console.print(f" Experience: {exp_years} years")
+    console.print(f" Minimum Salary: ${salary_min:,}")
+
+    confirm = typer.confirm("Save changes to profile?", default=True)
+    if confirm:
+        console.print("[green]Profile updated! Verify details in config.yaml or .env.[/green]")
+
+
+@app.command("follow-ups")
+def follow_ups_cmd() -> None:
+    """List follow-up actions due or overdue."""
+    _, SessionLocal = _init_context()
+    session = SessionLocal()
+    try:
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        stmt = select(JobRecord).where(JobRecord.follow_up_date.isnot(None)).order_by(JobRecord.follow_up_date.asc())
+        jobs = list(session.scalars(stmt))
+
+        if not jobs:
+            console.print("[yellow]No follow-up dates scheduled.[/yellow]")
+            return
+
+        table = Table(title="Follow-up Actions")
+        table.add_column("Job ID", style="cyan")
+        table.add_column("Status")
+        table.add_column("Follow-up Date", style="bold yellow")
+        table.add_column("Title")
+        table.add_column("Company")
+
+        for j in jobs:
+            is_overdue = j.follow_up_date and j.follow_up_date <= now
+            date_str = j.follow_up_date.strftime("%Y-%m-%d") + (" [OVERDUE]" if is_overdue else "")
+            table.add_row(str(j.id), j.status, date_str, j.title[:35], j.company[:25])
+
+        console.print(table)
+    finally:
+        session.close()
+
+
+@app.command("add-contact")
+def add_contact_cmd(
+    name: str = typer.Argument(..., help="Contact full name"),
+    job_id: Optional[int] = typer.Option(None, "--job-id", help="Optional linked Job ID"),
+    role: Optional[str] = typer.Option(None, "--role", help="Contact role / title"),
+    company: Optional[str] = typer.Option(None, "--company", help="Company name"),
+    email: Optional[str] = typer.Option(None, "--email", help="Email address"),
+    phone: Optional[str] = typer.Option(None, "--phone", help="Phone number"),
+    linkedin: Optional[str] = typer.Option(None, "--linkedin", help="LinkedIn profile URL"),
+    notes: Optional[str] = typer.Option(None, "--notes", help="Notes"),
+) -> None:
+    """Add a recruiter, hiring manager, or networking contact locally."""
+    _, SessionLocal = _init_context()
+    session = SessionLocal()
+    try:
+        contact = add_contact(
+            session=session,
+            name=name,
+            job_id=job_id,
+            role=role,
+            company=company,
+            email=email,
+            phone=phone,
+            linkedin_url=linkedin,
+            notes=notes,
+        )
+        console.print(f"[bold green]Saved Contact #[/bold green]{contact.id}: {contact.name} ({contact.role or 'N/A'} @ {contact.company or 'N/A'})")
+    finally:
+        session.close()
+
+
+@app.command("contacts")
+def contacts_cmd(
+    job_id: Optional[int] = typer.Option(None, "--job-id", help="Filter by linked Job ID"),
+) -> None:
+    """List locally stored networking contacts."""
+    _, SessionLocal = _init_context()
+    session = SessionLocal()
+    try:
+        contacts = list_contacts(session, job_id=job_id)
+        if not contacts:
+            console.print("[yellow]No networking contacts recorded.[/yellow]")
+            return
+
+        table = Table(title="Local Contacts")
+        table.add_column("ID", style="cyan")
+        table.add_column("Name", style="bold")
+        table.add_column("Role")
+        table.add_column("Company")
+        table.add_column("Email")
+        table.add_column("Linked Job ID")
+
+        for c in contacts:
+            table.add_row(str(c.id), c.name, c.role or "-", c.company or "-", c.email or "-", str(c.job_id) if c.job_id else "-")
+
+        console.print(table)
+    finally:
+        session.close()
+
+
+@app.command("add-interview")
+def add_interview_cmd(
+    job_id: int = typer.Argument(..., help="Job database ID"),
+    date_str: str = typer.Argument(..., help="Interview date (YYYY-MM-DD HH:MM)"),
+    interview_type: str = typer.Option("Screening", "--type", help="Interview type (Screening, Technical, Behavioral, Onsite)"),
+    participants: Optional[str] = typer.Option(None, "--participants", help="Interviewers / participants"),
+    notes: Optional[str] = typer.Option(None, "--notes", help="Notes"),
+) -> None:
+    """Record an interview date, type, participants, and preparation notes locally."""
+    _, SessionLocal = _init_context()
+    session = SessionLocal()
+    try:
+        dt = datetime.strptime(date_str, "%Y-%m-%d %H:%M")
+        iv = add_interview(
+            session=session,
+            job_id=job_id,
+            interview_date=dt,
+            interview_type=interview_type,
+            participants=participants,
+            notes=notes,
+        )
+        console.print(f"[bold green]Recorded Interview #[/bold green]{iv.id} for Job #{job_id} on {dt.strftime('%Y-%m-%d %H:%M')} ({interview_type})")
+    except ValueError as exc:
+        console.print(f"[red]Invalid date format. Use 'YYYY-MM-DD HH:MM': {exc}[/red]")
+        raise typer.Exit(code=1)
+    finally:
+        session.close()
+
+
+@app.command("prepare-interview")
+def prepare_interview_cmd(
+    job_id: int = typer.Argument(..., help="Job database ID"),
+) -> None:
+    """Generate a local, truthful interview-preparation document using job details, resume, and notes."""
+    settings, SessionLocal = _init_context()
+    profile = load_candidate_profile()
+    session = SessionLocal()
+    try:
+        prep_path = prepare_interview_doc(
+            session=session,
+            job_id=job_id,
+            profile=profile,
+            output_base_dir=settings.jobs_applied_folder,
+        )
+        console.print(f"[bold green]Generated Interview Preparation Sheet:[/bold green]\n  [cyan]{prep_path}[/cyan]")
+    finally:
+        session.close()
+
+
+@app.command("answers")
+def answers_cmd() -> None:
+    """List reusable application questions and approved answers."""
+    _, SessionLocal = _init_context()
+    session = SessionLocal()
+    try:
+        answers = list_answers(session)
+        if not answers:
+            console.print("[yellow]No application answers saved yet.[/yellow]")
+            return
+
+        table = Table(title="Application Answer Library")
+        table.add_column("ID", style="cyan")
+        table.add_column("Question")
+        table.add_column("Approved Answer")
+        table.add_column("Context")
+
+        for a in answers:
+            table.add_row(str(a.id), a.original_question[:40], a.approved_answer[:50], a.source_context or "-")
+
+        console.print(table)
+    finally:
+        session.close()
+
+
+@app.command("add-answer")
+def add_answer_cmd(
+    question: str = typer.Argument(..., help="Question text"),
+    answer: str = typer.Argument(..., help="Approved answer text"),
+    context: Optional[str] = typer.Option(None, "--context", help="Source context / note"),
+    tags: Optional[str] = typer.Option(None, "--tags", help="Comma-separated tags"),
+) -> None:
+    """Add a question and user-approved answer to the local application-answer library."""
+    _, SessionLocal = _init_context()
+    session = SessionLocal()
+    try:
+        item = add_answer(session, question=question, answer=answer, source_context=context, tags=tags)
+        console.print(f"[bold green]Saved Answer #[/bold green]{item.id} for: '{item.original_question[:50]}'")
+    finally:
+        session.close()
+
+
+@app.command("suggest-answer")
+def suggest_answer_cmd(
+    job_id: int = typer.Argument(..., help="Job database ID"),
+    question: str = typer.Argument(..., help="Application question"),
+) -> None:
+    """Suggest an application answer based on local profile and master resume data (requires user review)."""
+    _, SessionLocal = _init_context()
+    profile = load_candidate_profile()
+    session = SessionLocal()
+    try:
+        suggestion = suggest_answer(session=session, job_id=job_id, question=question, profile=profile)
+        console.print(Panel(suggestion, title=f"Draft Answer Suggestion (Job #{job_id})"))
+    finally:
+        session.close()
+
+
+@app.command("add-job")
+def add_job_cmd(
+    url: str = typer.Option(..., "--url", help="Job page URL"),
+    title: Optional[str] = typer.Option(None, "--title", help="Job title"),
+    company: Optional[str] = typer.Option(None, "--company", help="Company name"),
+    description: Optional[str] = typer.Option(None, "--description", help="Job description text"),
+) -> None:
+    """Manually add or import a job listing using a URL and details."""
+    _, SessionLocal = _init_context()
+    profile = load_candidate_profile()
+    session = SessionLocal()
+    try:
+        parsed = ParsedJob(
+            title=title or "Imported Job Listing",
+            company=company or "Unknown",
+            job_url=url,
+            description=description or "",
+            source_platform="manual_import",
+        )
+        record, match, dupe = record_parsed_job(session, parsed, profile)
+        console.print(
+            f"[bold green]Recorded Job #[/bold green]{record.id}: {record.title} @ {record.company}\n"
+            f" Score: {match.score:.0f}/100 ({match.recommendation.value})\n"
+            f" Duplicate Status: {'Duplicate (' + dupe.reason + ')' if dupe.is_duplicate else 'Unique'}"
+        )
+    finally:
+        session.close()
+
+
+@app.command("backup")
+def backup_cmd(
+    destination: Optional[Path] = typer.Argument(None, help="Destination directory for backup ZIP"),
+) -> None:
+    """Create a local ZIP backup of database, config, and settings."""
+    settings, _ = _init_context()
+    zip_path = create_backup(settings, destination_dir=destination)
+    console.print(f"[bold green]Created local backup archive:[/bold green]\n  [cyan]{zip_path}[/cyan]")
+
+
+@app.command("restore")
+def restore_cmd(
+    backup_zip: Path = typer.Argument(..., help="Path to backup ZIP archive"),
+) -> None:
+    """Restore database and config files from a local backup archive."""
+    settings, _ = _init_context()
+    confirm = typer.confirm(f"Are you sure you want to restore from {backup_zip}? This will overwrite current database.", default=False)
+    if not confirm:
+        console.print("[yellow]Restore cancelled.[/yellow]")
+        return
+    restore_backup(backup_zip, settings)
+    console.print(f"[bold green]Successfully restored backup from:[/bold green] {backup_zip}")
+
+
+@app.command("delete-job")
+def delete_job_cmd(
+    job_id: int = typer.Argument(..., help="Job database ID to delete"),
+) -> None:
+    """Delete a single job record locally (requires explicit confirmation)."""
+    _, SessionLocal = _init_context()
+    session = SessionLocal()
+    try:
+        job = get_job(session, job_id)
+        if not job:
+            console.print(f"[red]Job ID {job_id} not found.[/red]")
+            raise typer.Exit(code=1)
+
+        confirm = typer.confirm(f"Are you sure you want to delete Job #{job.id} ({job.title} @ {job.company})?", default=False)
+        if not confirm:
+            console.print("[yellow]Deletion cancelled.[/yellow]")
+            return
+
+        success = delete_job_record(session, job_id)
+        if success:
+            console.print(f"[bold green]Successfully deleted Job #[/bold green]{job_id}")
+    finally:
+        session.close()
+
+
+@app.command("purge-data")
+def purge_data_cmd() -> None:
+    """Purge all local database records (requires explicit confirmation)."""
+    _, SessionLocal = _init_context()
+    session = SessionLocal()
+    try:
+        confirm = typer.confirm("CRITICAL: Are you sure you want to purge ALL local database records?", default=False)
+        if not confirm:
+            console.print("[yellow]Purge cancelled.[/yellow]")
+            return
+
+        count = purge_all_data(session)
+        console.print(f"[bold red]Purged {count} records across database.[/bold red]")
+    finally:
+        session.close()
 
 
 def _fmt_list(items: list) -> str:
