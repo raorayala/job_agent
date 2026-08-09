@@ -4,10 +4,18 @@ A private, local-first personal career assistant.
 
 ---
 
-## Quick Reference Workflow
+## Interactive Web Console & Quick Reference Workflow
+
+Launch the Web Console in your browser to view results and execute commands with 1 click:
 
 ```powershell
-# 1. Start local capture server for 1-click Chrome bookmarklet
+python -m job_agent web
+```
+
+Or run individual commands in your terminal:
+
+```powershell
+# 1. Start Web Console & 1-click Chrome bookmarklet server
 python -m job_agent serve
 
 # 2. Open automated search query links tailored to your config.yaml skills (posted in last 1-2 weeks)
@@ -40,7 +48,7 @@ python -m job_agent follow-ups
 
 ## 1-Click Chrome Bookmarklet Setup
 
-1. Run `python -m job_agent serve` in terminal.
+1. Run `python -m job_agent serve` or `python -m job_agent web` in terminal.
 2. In Google Chrome, press `Ctrl + Shift + B` to show Bookmarks Bar.
 3. Right-click Bookmarks Bar -> **Add page...**
    - **Name**: `Capture Job`

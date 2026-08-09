@@ -1,12 +1,34 @@
 # CLI Command Cheat Sheet — Job Search Agent
 
-A comprehensive reference guide for all CLI commands, maintenance procedures, and security safeguards in the **Job Search Agent** local-first personal career assistant.
+A comprehensive reference guide for all CLI commands, maintenance procedures, web application controls, and security safeguards in the **Job Search Agent** local-first personal career assistant.
+
+---
+
+## 🌐 Interactive Web Application Dashboard & CLI Runner
+
+Instead of running commands manually in your terminal, launch the local **Web Application Console**:
+
+```powershell
+python -m job_agent web
+# or
+python -m job_agent serve --open
+```
+
+This opens `http://localhost:8000/` in Chrome with:
+- **Interactive CLI Cheat Sheet**: Form controls and **"▶ Run Command"** buttons for all 27 CLI commands.
+- **Live Terminal Console**: Streams command stdout/stderr directly onto the web page in real-time.
+- **Pipeline Dashboard**: Live metrics for total jobs, high match scores, follow-ups due, and interviews.
+- **Tracked Jobs Explorer**: 1-Click action buttons to tailor resumes, mark applied, and draft answers.
+- **1-Click Chrome Bookmarklet**: Embedded snippet installer and capture endpoint.
 
 ---
 
 ## ⚡ Daily Workflow Quick Start
 
 ```powershell
+# 0. Launch Interactive Web Console & CLI Cheat Sheet (Recommended)
+python -m job_agent web
+
 # 1. Start local capture server (for 1-click Chrome Bookmarklet)
 python -m job_agent serve
 
@@ -41,81 +63,92 @@ python -m job_agent follow-ups
 ## 📋 Categorized Command Reference
 
 ### 1. Setup & Environment
-| Command | Description | Default / Options |
-| :--- | :--- | :--- |
-| `python -m job_agent setup` | Initialize local runtime folders, SQLite DB schema, verify config and OAuth credentials | `--no-copy-env` |
-| `python -m job_agent profile` | Display loaded candidate profile, target titles, skills, and multi-resumes | None |
-| `python -m job_agent statuses` | List supported application lifecycle statuses | None |
+| Command | Web Console Link | Description | Default / Options |
+| :--- | :--- | :--- | :--- |
+| `python -m job_agent setup` | `▶ Run` | Initialize local runtime folders, SQLite DB schema, verify config and OAuth credentials | `--no-copy-env` |
+| `python -m job_agent profile` | `▶ Run` | Display loaded candidate profile, target titles, skills, and multi-resumes | None |
+| `python -m job_agent statuses` | `▶ Run` | List supported application lifecycle statuses | None |
 
 ---
 
 ### 2. Job Discovery & Ingestion
-| Command | Description | Key Parameters |
-| :--- | :--- | :--- |
-| `python -m job_agent serve` | Start local HTTP server (`http://127.0.0.1:8000`) for 1-click Chrome bookmarklet capture | `--port 8000` |
-| `python -m job_agent search-links` | Generate search URLs for Indeed, Dice, ZipRecruiter, LinkedIn & Glassdoor (jobs posted in last 1-2 weeks) | `--open`, `--browser chrome` |
-| `python -m job_agent fetch-jobs` | Directly search job platforms without browser (<10 jobs, <1-2 weeks old) | `--platforms dice,ziprecruiter`, `--limit 9` |
-| `python -m job_agent sync-gmail` | Fetch and parse job alert emails from Gmail using OAuth 2.0 | `--max-results 25`, `--dry-run` |
-| `python -m job_agent add-job` | Manually capture a job listing via URL or custom details | `--url`, `--title`, `--company`, `--description`, `--salary` |
+| Command | Web Console Link | Description | Key Parameters |
+| :--- | :--- | :--- | :--- |
+| `python -m job_agent web` | `http://localhost:8000/` | Launch Interactive Web Application Console & CLI Cheat Sheet | `--port 8000`, `--open` |
+| `python -m job_agent serve` | `▶ Run` | Start local HTTP server for 1-click Chrome bookmarklet capture & Web Console | `--port 8000`, `--open` |
+| `python -m job_agent search-links` | `▶ Run` | Generate search URLs for Indeed, Dice, ZipRecruiter, LinkedIn & Glassdoor (jobs posted in last 1-2 weeks) | `--open`, `--browser chrome` |
+| `python -m job_agent fetch-jobs` | `▶ Run` | Directly search job platforms without browser (<10 jobs, <1-2 weeks old) | `--platforms dice,ziprecruiter`, `--limit 9` |
+| `python -m job_agent sync-gmail` | `▶ Run` | Fetch and parse job alert emails from Gmail using OAuth 2.0 | `--max-results 25`, `--dry-run` |
+| `python -m job_agent add-job` | `▶ Run` | Manually capture a job listing via URL or custom details | `--url`, `--title`, `--company`, `--description`, `--salary` |
 
 ---
 
 ### 3. Analysis & Document Tailoring
-| Command | Description | Key Parameters |
-| :--- | :--- | :--- |
-| `python -m job_agent analyze` | Re-score all stored jobs using 0–100 weighted matcher against DOCX resume text | `--min-score 70` |
-| `python -m job_agent tailor <job_id>` | Generate tailored ATS resume DOCX & cover letter in `~/Desktop/Jobs Applied/` | `--dry-run`, `--no-cover-letter` |
+| Command | Web Console Link | Description | Key Parameters |
+| :--- | :--- | :--- | :--- |
+| `python -m job_agent analyze` | `▶ Run` | Re-score all stored jobs using 0–100 weighted matcher against DOCX resume text | `--min-score 70` |
+| `python -m job_agent tailor <job_id>` | `▶ Run` | Generate tailored ATS resume DOCX & cover letter in `~/Desktop/Jobs Applied/` | `--dry-run`, `--no-cover-letter` |
 
 ---
 
 ### 4. Application Tracking & Workflow
-| Command | Description | Key Parameters |
-| :--- | :--- | :--- |
-| `python -m job_agent jobs` | List tracked jobs with status, match score, company, and platform | `--min-score N`, `--status STATUS`, `--limit 50` |
-| `python -m job_agent mark-applied <job_id>` | Mark a job as Applied with timestamp (explicit approval required) | `--confirm` |
-| `python -m job_agent dashboard` | View high-score jobs, follow-ups due, upcoming interviews, and application metrics | None |
-| `python -m job_agent follow-ups` | List follow-up actions due or overdue for applied jobs | None |
-| `python -m job_agent report` | Generate local pipeline metrics, interview rates, and status summaries | `--period weekly` / `--period monthly` |
+| Command | Web Console Link | Description | Key Parameters |
+| :--- | :--- | :--- | :--- |
+| `python -m job_agent jobs` | `▶ Run` | List tracked jobs with status, match score, company, and platform | `--min-score N`, `--status STATUS`, `--limit 50` |
+| `python -m job_agent mark-applied <job_id>` | `▶ Run` | Mark a job as Applied with timestamp (explicit approval required) | `--confirm` |
+| `python -m job_agent dashboard` | `▶ Run` | View job search pipeline summary, high score opportunities, and interviews | None |
+| `python -m job_agent follow-ups` | `▶ Run` | List follow-up actions due or overdue for applied jobs | None |
+| `python -m job_agent report` | `▶ Run` | Generate local pipeline metrics, interview rates, and status summaries | `--period weekly` / `--period monthly` |
 
 ---
 
 ### 5. Contacts & Networking
-| Command | Description | Key Parameters |
-| :--- | :--- | :--- |
-| `python -m job_agent add-contact "Name"` | Add recruiter, referral, or hiring manager contact | `--email`, `--role`, `--company`, `--job-id ID`, `--notes` |
-| `python -m job_agent contacts` | List all local networking contacts and linked jobs | None |
+| Command | Web Console Link | Description | Key Parameters |
+| :--- | :--- | :--- | :--- |
+| `python -m job_agent add-contact "Name"` | `▶ Run` | Add recruiter, referral, or hiring manager contact | `--email`, `--role`, `--company`, `--job-id ID`, `--notes` |
+| `python -m job_agent contacts` | `▶ Run` | List all local networking contacts and linked jobs | None |
 
 ---
 
 ### 6. Interview Tracking & Preparation
-| Command | Description | Key Parameters |
-| :--- | :--- | :--- |
-| `python -m job_agent add-interview <job_id> "Date"` | Record upcoming interview details and preparation tasks | `--type "Technical"`, `--interviewer "Name"`, `--notes` |
-| `python -m job_agent prepare-interview <job_id>` | Generate factual interview prep document based on JD, resume, and profile | `--dry-run` |
+| Command | Web Console Link | Description | Key Parameters |
+| :--- | :--- | :--- | :--- |
+| `python -m job_agent add-interview <job_id> "Date"` | `▶ Run` | Record upcoming interview details and preparation tasks | `--type "Technical"`, `--interviewer "Name"`, `--notes` |
+| `python -m job_agent prepare-interview <job_id>` | `▶ Run` | Generate factual interview prep document based on JD, resume, and profile | `--dry-run` |
 
 ---
 
 ### 7. Application Answer Library
-| Command | Description | Key Parameters |
-| :--- | :--- | :--- |
-| `python -m job_agent answers` | List saved application answers in local reusable library | `--tag TAG` |
-| `python -m job_agent add-answer` | Save an approved question/answer pair to local library | `--question "..."`, `--answer "..."`, `--tags "..."` |
-| `python -m job_agent suggest-answer <job_id> "Q"` | Draft answer suggestion using local resume and profile context (draft only) | `--question "..."` |
+| Command | Web Console Link | Description | Key Parameters |
+| :--- | :--- | :--- | :--- |
+| `python -m job_agent answers` | `▶ Run` | List saved application answers in local reusable library | `--tag TAG` |
+| `python -m job_agent add-answer` | `▶ Run` | Save an approved question/answer pair to local library | `--question "..."`, `--answer "..."`, `--tags "..."` |
+| `python -m job_agent suggest-answer <job_id> "Q"` | `▶ Run` | Draft answer suggestion using local resume and profile context (draft only) | `--question "..."` |
 
 ---
 
 ### 8. Maintenance, Backup & Data Management
-| Command | Description | Key Parameters |
-| :--- | :--- | :--- |
-| `python -m job_agent backup [PATH]` | Create full local timestamped ZIP backup of SQLite DB, settings, `.env`, and documents | Optional output ZIP path |
-| `python -m job_agent restore <backup_zip>` | Restore SQLite database and settings from a previously created ZIP backup archive | Required: ZIP file path |
-| `python -m job_agent delete-job <job_id>` | Safely delete a single job record from SQLite along with its generated output files | `--confirm` |
-| `python -m job_agent purge-data` | Complete wipe/purge of all database records (jobs, contacts, interviews, answers) | `--confirm` |
-| `powershell -ExecutionPolicy Bypass -File scripts/schedule_daily_sync.ps1` | Configure Windows Task Scheduler for daily background syncs (`sync-gmail` & `analyze`) | None |
+| Command | Web Console Link | Description | Key Parameters |
+| :--- | :--- | :--- | :--- |
+| `python -m job_agent backup [PATH]` | `▶ Run` | Create full local timestamped ZIP backup of SQLite DB, settings, `.env`, and documents | Optional output ZIP path |
+| `python -m job_agent restore <backup_zip>` | `▶ Run` | Restore SQLite database and settings from a previously created ZIP backup archive | Required: ZIP file path |
+| `python -m job_agent delete-job <job_id>` | `▶ Run` | Safely delete a single job record from SQLite along with its generated output files | `--confirm` |
+| `python -m job_agent purge-data` | `▶ Run` | Complete wipe/purge of all database records (jobs, contacts, interviews, answers) | `--confirm` |
 
 ---
 
 ## 🛠️ Command Details & Flags Reference
+
+### `web` & `serve`
+```powershell
+# Start local Web Application Console and open in browser
+python -m job_agent web
+
+# Start local server on custom port 8000
+python -m job_agent serve --port 8000 --open
+```
+
+---
 
 ### `backup` & `restore`
 ```powershell
@@ -128,7 +161,6 @@ python -m job_agent backup C:\Backups\my_job_agent_backup.zip
 # Restore database and configuration from backup
 python -m job_agent restore C:\Backups\my_job_agent_backup.zip
 ```
-*Note: Backups archive your SQLite database (`data/jobs.db`), `.env` file, `config.yaml`, and tailored document outputs into a single encrypted-capable ZIP file.*
 
 ---
 
@@ -143,70 +175,18 @@ python -m job_agent purge-data --confirm
 
 ---
 
-### `search-links`
-```powershell
-python -m job_agent search-links [OPTIONS]
-
-Options:
-  --open / --no-open      Automatically launch search links in your browser [default: --no-open]
-  --browser TEXT          Browser to use when opening links: 'chrome', 'edge', or 'default' [default: chrome]
-  --help                  Show help message
-```
-*Note: Generated query URLs include date filters ensuring search results are posted within the last 1–2 weeks (14 days max).*
-
----
-
-### `fetch-jobs`
-```powershell
-python -m job_agent fetch-jobs [OPTIONS]
-
-Options:
-  --platforms TEXT        Comma-separated platforms to search: 'dice', 'ziprecruiter' [default: dice,ziprecruiter]
-  --limit INTEGER         Max jobs per platform (enforces <10 jobs per run) [default: 9]
-  --help                  Show help message
-```
-
----
-
-### `mark-applied`
-```powershell
-python -m job_agent mark-applied JOB_ID [OPTIONS]
-
-Arguments:
-  JOB_ID                  Database integer ID of the job [required]
-
-Options:
-  --confirm / --no-confirm  Explicitly confirm marking job as Applied [default: --no-confirm]
-  --help                    Show help message
-```
-
----
-
 ## 🔐 Security & Privacy Safeguards Reference
 
-### 1. Air-Gapped Local-First Data Storage
-- **100% Local Filesystem**: All job listings, SQLite database records (`data/jobs.db`), candidate profiles, master DOCX resumes, tailored applications, contacts, and logs remain stored strictly on your local machine.
-- **Zero Cloud Sync & Telemetry**: No user accounts, sign-in, remote databases, analytics tracking, advertising, or external data uploads.
+1. **Air-Gapped Local-First Data Storage**:
+   - All job listings, SQLite database records (`data/jobs.db`), candidate profiles, master DOCX resumes, tailored applications, contacts, and logs remain stored strictly on your local machine.
+   - Zero cloud sync, no user accounts, no telemetry, and no external data uploads.
 
-### 2. Google OAuth 2.0 Least Privilege
-- **Read-Only Scope**: Uses `https://www.googleapis.com/auth/gmail.readonly` exclusively.
-- **No Email Sending or Modifying**: The agent cannot send, edit, or delete emails in your Gmail account.
-- **Local Credentials**: OAuth client secrets (`credentials.json`) and token cache (`token.json`) are stored locally and ignored by Git.
+2. **Google OAuth 2.0 Least Privilege**:
+   - Uses `https://www.googleapis.com/auth/gmail.readonly` exclusively. Cannot send, edit, or delete emails.
 
-### 3. Localhost Capture Server Security (`serve`)
-- **Strict Local Binding**: The capture endpoint binds exclusively to `127.0.0.1` (`localhost:8000`).
-- **User Review Guard**: Captured listings require user confirmation before saving and are never auto-submitted.
+3. **Localhost Capture Server Security (`serve` / `web`)**:
+   - Binds strictly to `127.0.0.1` (`http://localhost:8000/`).
+   - Only processes local requests from your own browser console and bookmarklet.
 
-### 4. Git Version Control Exclusion Guardrails (`.gitignore`)
-- Automatically excludes sensitive assets from version control:
-  - Secrets & Credentials: `.env`, `credentials.json`, `token.json`
-  - Local Databases & Backups: `*.db`, `*.sqlite`, `data/`, `backups/`
-  - Personal Output Files: `~/Desktop/Jobs Applied/`, generated DOCX/PDF resumes, log files
-
-### 5. Truthfulness Safeguards
-- **Zero Hallucination Policy**: Tailored resumes and cover letters reorder and emphasize only verified experience from your master DOCX resume. Never invents employers, titles, dates, or skills.
-- **Draft Application Answers**: Suggested answers (`suggest-answer`) are explicitly tagged as `[DRAFT]` for user review before submission.
-
-### 6. Human-In-The-Loop Approval Gates
-- **Zero Auto-Apply**: The agent **never** auto-fills forms or auto-submits job applications.
-- **Confirmation Flags**: Destructive and status-changing actions require explicit `--confirm` parameters.
+4. **Git Version Control Exclusion Guardrails (`.gitignore`)**:
+   - Automatically excludes `.env`, `credentials.json`, `token.json`, `*.db`, `data/`, `backups/`, and generated output files.

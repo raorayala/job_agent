@@ -636,24 +636,39 @@ def fetch_jobs_cmd(
 
 @app.command("serve")
 def serve_cmd(
-    port: int = typer.Option(8000, "--port", help="Local HTTP port for browser bookmarklet capture"),
+    port: int = typer.Option(8000, "--port", help="Local HTTP port for Web Console & browser capture"),
+    open_browser: bool = typer.Option(True, "--open/--no-open", help="Open Web Console in browser automatically"),
 ) -> None:
-    """Start local HTTP server on http://localhost:8000/capture for 1-click browser bookmarklet captures."""
+    """Start local Web Console & CLI Cheat Sheet server on http://localhost:8000/."""
     import time
     _init_context()
     server = start_capture_server(host="127.0.0.1", port=port)
+    url = f"http://localhost:{port}/"
     console.print(
-        f"[bold green]Local Browser Capture Server is running![/bold green]\n"
-        f"  Listening on: [cyan]http://localhost:{port}/capture[/cyan]\n"
-        f"  Keep this terminal open while capturing jobs from your browser.\n"
+        f"[bold green]Local Web Console & Interactive CLI Cheat Sheet Server is running![/bold green]\n"
+        f"  Web Dashboard & Command Runner: [cyan]{url}[/cyan]\n"
+        f"  1-Click Chrome Bookmarklet Endpoint: [cyan]{url}capture[/cyan]\n"
+        f"  Interactive CLI Commands: All 27 CLI commands available for 1-click execution\n"
         f"  Press [bold]Ctrl+C[/bold] to stop server."
     )
+    if open_browser:
+        _open_in_browser(url, browser_choice="chrome")
+
     try:
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
         server.shutdown()
-        console.print("\n[yellow]Local capture server stopped.[/yellow]")
+        console.print("\n[yellow]Local Web Console server stopped.[/yellow]")
+
+
+@app.command("web")
+def web_cmd(
+    port: int = typer.Option(8000, "--port", help="Local HTTP port"),
+    open_browser: bool = typer.Option(True, "--open/--no-open", help="Open Web Console in browser"),
+) -> None:
+    """Launch interactive Web Application Dashboard and CLI Command Runner in your browser."""
+    serve_cmd(port=port, open_browser=open_browser)
 
 
 @app.command("add-contact")
