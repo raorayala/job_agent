@@ -56,15 +56,14 @@ Configurable fields:
 - Master resume path
 - Optional cover-letter template path
 
-### 5.2 Gmail ingestion
+### 5.2 Discovery & Ingestion
 
-- Authenticate with Gmail OAuth 2.0
-- Least-privilege scope: **read-only** (`gmail.readonly`)
-- Search only configured job-alert senders / labels
-- Process emails incrementally using Gmail message IDs
-- Extract: title, company, location, source platform, salary, employment type, job URL, date received, description (when available)
-- Preserve original email/message ID and source URL
-- Handle malformed HTML and missing fields gracefully
+- **Gmail OAuth 2.0**: Least-privilege read-only access (`gmail.readonly`) to sync job alert emails (filtered to last 14 days).
+- **Direct Platform Search (`fetch-jobs`)**: Direct query ingestion from Dice, ZipRecruiter, and other platforms.
+  - **Batch Limit**: Enforces initial run limit of **less than 10 jobs** per platform per run (default: 9).
+  - **Freshness Filter**: Filters strictly for jobs posted within the **last 1 to 2 weeks** (14 days max).
+- **1-Click Chrome Bookmarklet (`serve`)**: Local HTTP endpoint (`http://localhost:8000/capture`) for saving job listings directly from Chrome.
+- **Search Query URLs (`search-links`)**: Generates pre-formatted search URLs for Indeed, Dice, ZipRecruiter, LinkedIn, and Glassdoor with 1–2 week freshness parameters, launching explicitly in Google Chrome.
 
 ### 5.3 Job analysis and ranking
 

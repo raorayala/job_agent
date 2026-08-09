@@ -14,66 +14,29 @@
 | Milestone | Scope | Status |
 |-----------|-------|--------|
 | 1 | Packaging, config, SQLite schema, CLI | **Complete** |
-| 2 | Master-resume ingestion + stronger profile validation | Planned |
-| 3 | Gmail OAuth + incremental sync | Planned (module stubbed) |
-| 4 | Email/job extraction | Planned (module stubbed) |
-| 5 | Duplicate detection beyond URL normalize helpers | Planned (helpers started) |
-| 6 | Rule-based explainable matching | Planned (module stubbed) |
-| 7 | Resume tailoring + Desktop export paths | Planned (exporter helpers done) |
-| 8 | Test polish + optional Streamlit dashboard | Planned |
+| 2 | Master-resume DOCX text extraction (`resume_parser.py`) | **Complete** |
+| 3 | Gmail OAuth + incremental sync (`gmail_client.py`) | **Complete** |
+| 4 | Email digest / multi-job extraction (`email_parser.py`) | **Complete** |
+| 5 | Multi-tier duplicate detection + schema migration (`job_normalizer.py`, `database.py`) | **Complete** |
+| 6 | Weighted 0–100 explainable matching algorithm (`matcher.py`) | **Complete** |
+| 7 | Truthful ATS resume & cover letter tailoring + Desktop export (`resume_tailor.py`) | **Complete** |
+| 8 | Direct platform fetch, local capture server, contacts, answers, backup, test suite | **Complete** |
 
-## 3. What Milestone 1 delivers
+## 3. Implemented Modules Overview
 
-### 3.1 Packaging
+### 3.1 Platform Fetcher (`platform_fetcher.py`)
+- Direct search against Dice and ZipRecruiter via public HTML & JSON-LD schema parsing.
+- Enforces batch limits (**< 10 jobs per run**, default: `limit=9`).
+- Filters for postings within the **last 1 to 2 weeks** (`postedDate=14`, `days=14`).
 
-- `pyproject.toml` with setuptools `src/` layout
-- Optional extras: `dev`, `dashboard`, `pdf`
-- Editable install: `pip install -e ".[dev]"`
+### 3.2 Local Capture Server (`browser_capture.py`)
+- Lightweight HTTP server running on `http://localhost:8000`.
+- CORS preflight and JSON POST payload handling for 1-click Chrome bookmarklet capture.
 
-### 3.2 Configuration (`config.py`)
-
-- `Settings` dataclass from environment
-- `CandidateProfile` from `config.yaml` → `profile`
-- `load_candidate_profile()`, `get_settings()`, `ensure_runtime_dirs()`
-- Env overrides for `MASTER_RESUME_PATH`, DB path, Gmail paths, LLM, log level
-
-### 3.3 Domain models (`models.py`)
-
-- `ApplicationStatus` enum (full status set)
-- `Recommendation` enum
-- `CandidateProfile`, `ParsedJob`, `MatchExplanation`, `DuplicateCheckResult`
-
-### 3.4 Database (`database.py`)
-
-- SQLAlchemy models: `JobRecord`, `ProcessedEmail`
-- `init_db()`, `list_jobs()`, `get_job()`, email processed helpers
-- Unique constraints on normalized URL and Gmail message ID
-
-### 3.5 Application tracker (`application_tracker.py`)
-
-- `list_tracked_jobs()`
-- `update_status()` / `mark_applied()` with **Applied confirmation gate**
-
-### 3.6 Document path helpers (`document_exporter.py`)
-
-- `safe_filename()`, `application_folder()`, `resume_filename()`
-
-### 3.7 Normalizer helpers (`job_normalizer.py`)
-
-- `normalize_url()`, `normalize_company()`, `normalize_text()`
-
-### 3.8 CLI (`cli.py`)
-
-Working: `setup`, `profile`, `jobs`, `statuses`, `mark-applied`  
-Stubbed with clear exit: `sync-gmail`, `analyze`, `tailor`, `dashboard`
-
-### 3.9 Tests
-
-- `tests/test_config.py`
-- `tests/test_database.py`
-- `tests/test_application_tracker.py`
-- `tests/test_job_normalizer.py`
-- `tests/test_document_exporter.py`
+### 3.3 CLI Enhancements (`cli.py`)
+- **`search-links`**: Generates query links with 1-2 week freshness filters; `--open` flag explicitly launches Google Chrome on Windows (`_open_in_browser`).
+- **`fetch-jobs`**: Fetches direct platform listings with `--limit 9` (<10 jobs) and 14-day freshness.
+- Full suite of commands: `serve`, `search-links`, `fetch-jobs`, `sync-gmail`, `analyze`, `jobs`, `tailor`, `mark-applied`, `add-contact`, `contacts`, `add-interview`, `prepare-interview`, `answers`, `add-answer`, `suggest-answer`, `dashboard`, `follow-ups`, `report`, `backup`, `restore`, `delete-job`, `purge-data`.
 
 ## 4. Coding standards
 

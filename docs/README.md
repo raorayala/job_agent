@@ -4,6 +4,8 @@ This folder is the project document set for **job-agent**: a local-first Python 
 
 | Document | Contents |
 |----------|----------|
+| [CLI Cheat Sheet](../CLI_CHEAT_SHEET.md) | Complete CLI command reference and cheat sheet |
+| [Usage Guide](../USER_USAGE_GUIDE.md) | Quick reference workflow & 1-click Chrome bookmarklet |
 | [01 — Requirements](01-REQUIREMENTS.md) | Goals, scope, functional/non-functional requirements, constraints, out of scope |
 | [02 — Design Specification](02-DESIGN-SPECIFICATION.md) | Product design, UX flows, CLI contracts, safeguards |
 | [03 — Architecture](03-ARCHITECTURE.md) | System context, components, data flow, package layout |
@@ -17,6 +19,6 @@ This folder is the project document set for **job-agent**: a local-first Python 
 
 **Repository:** https://github.com/raorayala/job_agent  
 **Current branch (as of docs):** `cursor/initial-gmail-job-agent-scaffold`  
-**Package version:** `0.1.0` (Milestone 1 complete)
+**Package version:** `0.1.0` (All Milestones 1–8 complete)
 
 Start with [Requirements](01-REQUIREMENTS.md), then [Architecture](03-ARCHITECTURE.md) and the [User Guide](10-USER-GUIDE.md).

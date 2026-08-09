@@ -47,13 +47,13 @@ Gmail (OAuth readonly) → email parser → normalizer/dedupe
 | # | Milestone | Status |
 |---|-----------|--------|
 | 1 | Project setup, config, SQLite schema, CLI | ✅ Done |
-| 2 | Candidate profile + master-resume ingestion | Next |
-| 3 | Gmail OAuth + incremental sync | Planned |
-| 4 | Email/job extraction | Planned |
-| 5 | Duplicate detection + tracking | Planned |
-| 6 | Rule-based explainable matching | Planned |
-| 7 | Truthful resume tailoring + Desktop export | Planned |
-| 8 | Tests polish + optional Streamlit dashboard | Planned |
+| 2 | Candidate profile + master-resume DOCX text extraction | ✅ Done |
+| 3 | Gmail OAuth + incremental sync (`gmail.readonly`) | ✅ Done |
+| 4 | Email digest / multi-job extraction | ✅ Done |
+| 5 | Multi-tier duplicate detection + application tracking | ✅ Done |
+| 6 | Weighted explainable matching algorithm (0–100) | ✅ Done |
+| 7 | Truthful ATS resume & cover letter tailoring + Desktop export | ✅ Done |
+| 8 | Direct platform fetch, local capture server, contacts, answers, backup, test suite | ✅ Done |
 
 ## Quick start (Windows)
 
@@ -68,21 +68,22 @@ python -m job_agent setup
 python -m job_agent profile
 ```
 
-Or run `scripts\dev_setup.ps1`.
+### Daily Usage Commands
 
-### Working commands (Milestone 1)
+For a full reference, see the **[CLI Command Cheat Sheet](CLI_CHEAT_SHEET.md)** or **[USER_USAGE_GUIDE.md](USER_USAGE_GUIDE.md)**.
 
 ```powershell
-python -m job_agent setup
-python -m job_agent profile
-python -m job_agent jobs
-python -m job_agent statuses
-python -m job_agent mark-applied <job_id> --confirm   # only after you apply manually
+python -m job_agent serve                              # Start 1-click Chrome bookmarklet capture server
+python -m job_agent search-links --open --browser chrome  # Launch search URLs (<1-2 weeks old) in Chrome
+python -m job_agent fetch-jobs --platforms dice --limit 9 # Direct search (<10 jobs per platform, <1-2 weeks old)
+python -m job_agent sync-gmail                         # Fetch job alert emails from Gmail
+python -m job_agent analyze                            # Re-score stored jobs against profile & DOCX resume
+python -m job_agent jobs --min-score 60               # List tracked jobs
+python -m job_agent tailor <job_id>                    # Generate tailored ATS DOCX resume & cover letter
+python -m job_agent mark-applied <job_id> --confirm    # Mark as applied after manual submission
+python -m job_agent dashboard                          # View search pipeline dashboard
+python -m job_agent follow-ups                         # View follow-up actions due
 ```
-
-Commands reserved for later milestones exit with a clear message:
-
-`sync-gmail`, `analyze`, `tailor`, `dashboard`.
 
 ## Configure your profile
 

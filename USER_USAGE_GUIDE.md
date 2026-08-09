@@ -10,26 +10,30 @@ A private, local-first personal career assistant.
 # 1. Start local capture server for 1-click Chrome bookmarklet
 python -m job_agent serve
 
-# 2. Open automated search query links tailored to your config.yaml skills
-python -m job_agent search-links --open
+# 2. Open automated search query links tailored to your config.yaml skills (posted in last 1-2 weeks)
+python -m job_agent search-links --open --browser chrome
 
-# 3. Direct search and fetch from job platforms (Dice, etc.)
-python -m job_agent fetch-jobs --platforms dice
+# 3. Direct search and fetch from job platforms (<10 jobs per platform, posted in last 1-2 weeks)
+python -m job_agent fetch-jobs --platforms dice,ziprecruiter --limit 9
 
-# 4. Re-score all jobs against your master resume text and profile
+# 4. Sync job alert emails from Gmail (received in last 14 days)
+python -m job_agent sync-gmail
+
+# 5. Re-score all jobs against your master resume text and profile
 python -m job_agent analyze
 
-# 5. List high-matching opportunities
+# 6. List high-matching opportunities
 python -m job_agent jobs --min-score 60
 
-# 6. Generate ATS tailored DOCX resume & cover letter
+# 7. Generate ATS tailored DOCX resume & cover letter
 python -m job_agent tailor <job_id>
 
-# 7. Mark as applied after manual submission
+# 8. Mark as applied after manual submission
 python -m job_agent mark-applied <job_id> --confirm
 
-# 8. View search pipeline dashboard
+# 9. View search pipeline dashboard & follow-ups
 python -m job_agent dashboard
+python -m job_agent follow-ups
 ```
 
 ---
@@ -58,31 +62,19 @@ javascript:(function(){
   .catch(err => alert('❌ Error: Make sure "python -m job_agent serve" is running in terminal.'));
 })();
 ```
-4. Click **`Capture Job`** on Chrome's bar while viewing any job on Indeed, Dice, ZipRecruiter, or Glassdoor!
+4. Click **`Capture Job`** on Chrome's bar while viewing any job on Indeed, Dice, ZipRecruiter, Glassdoor, or LinkedIn!
 
 ---
 
-## CLI Command Cheat Sheet
+## 🚀 Key Feature Highlights
 
-| Task | Command |
-| :--- | :--- |
-| **Verify Setup** | `python -m job_agent setup` |
-| **Inspect Profile** | `python -m job_agent profile` |
-| **Capture Server** | `python -m job_agent serve` |
-| **Search Links** | `python -m job_agent search-links [--open]` |
-| **Fetch Jobs** | `python -m job_agent fetch-jobs [--platforms dice]` |
-| **Manual Add** | `python -m job_agent add-job --url URL --title T --company C` |
-| **Gmail Sync** | `python -m job_agent sync-gmail` |
-| **Analyze Scores**| `python -m job_agent analyze` |
-| **List Jobs** | `python -m job_agent jobs [--min-score 60]` |
-| **Tailor Resume** | `python -m job_agent tailor <job_id>` |
-| **Mark Applied** | `python -m job_agent mark-applied <job_id> --confirm` |
-| **Add Contact** | `python -m job_agent add-contact "Name" --job-id ID` |
-| **List Contacts** | `python -m job_agent contacts` |
-| **Add Interview** | `python -m job_agent add-interview ID "YYYY-MM-DD HH:MM"` |
-| **Interview Prep**| `python -m job_agent prepare-interview ID` |
-| **Answer Draft** | `python -m job_agent suggest-answer ID "Question"` |
-| **Dashboard** | `python -m job_agent dashboard` |
-| **Weekly Report** | `python -m job_agent report --period weekly` |
-| **Local Backup** | `python -m job_agent backup` |
-| **Restore Backup**| `python -m job_agent restore PATH` |
+### 1. Initial Batch Constraints & Freshness Filter
+- **Batch Size Limit**: `fetch-jobs` defaults to **9 items per platform** (< 10 jobs per run) to ensure focused, manageable initial reviews.
+- **1–2 Week Freshness**: All generated search links (`search-links`) and direct fetch queries (`fetch-jobs`) filter specifically for jobs posted within the **last 1 to 2 weeks** (14 days max).
+- **Chrome Launching**: Running `search-links --open --browser chrome` explicitly launches Google Chrome on Windows, bypassing Edge browser routing.
+
+---
+
+## 📖 Complete Command Reference
+
+For a full reference of all available CLI commands, options, and parameters, please see the **[CLI Command Cheat Sheet](CLI_CHEAT_SHEET.md)**.
