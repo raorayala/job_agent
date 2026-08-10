@@ -49,7 +49,15 @@ from job_agent.platform_fetcher import (
     import_job_from_url,
     search_and_import_jobs,
 )
+from job_agent.profile_optimize import analyze_profile_against_target
 from job_agent.report_service import generate_ics_calendar, generate_pipeline_summary, generate_report
+from job_agent.resume_optimize import (
+    apply_accepted_suggestions_to_draft,
+    generate_optimize_suggestions,
+    load_optimize_bundle,
+    update_suggestion,
+)
+from job_agent.resume_parser import extract_resume_text
 from job_agent.system_health import get_system_health
 
 logger = get_logger(__name__)
@@ -419,18 +427,118 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
             font-size: 0.75rem;
             letter-spacing: 0.03em;
         }
+        body.module-gate-open #app-shell {
+            display: none !important;
+        }
+        body.module-gate-open #module-gate {
+            display: flex !important;
+        }
+        #module-gate {
+            display: none;
+            min-height: 100vh;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem 1rem;
+            background:
+                radial-gradient(ellipse at 20% 20%, rgba(37, 99, 235, 0.18), transparent 50%),
+                radial-gradient(ellipse at 80% 0%, rgba(15, 23, 42, 0.12), transparent 45%),
+                linear-gradient(160deg, #0f172a 0%, #1e293b 45%, #334155 100%);
+            color: #f8fafc;
+        }
+        .module-gate-card {
+            background: rgba(255, 255, 255, 0.96);
+            color: #0f172a;
+            border-radius: 18px;
+            border: 1px solid #e2e8f0;
+            padding: 1.75rem;
+            height: 100%;
+            cursor: pointer;
+            transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.18);
+        }
+        .module-gate-card:hover {
+            transform: translateY(-4px);
+            border-color: #2563eb;
+            box-shadow: 0 16px 36px rgba(37, 99, 235, 0.22);
+        }
+        .module-gate-card.admin-card:hover {
+            border-color: #d97706;
+        }
+        .module-icon {
+            width: 56px;
+            height: 56px;
+            border-radius: 14px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        .suggestion-card {
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 0.85rem 1rem;
+            margin-bottom: 0.75rem;
+            background: #fff;
+        }
+        .suggestion-card.accepted { border-color: #86efac; background: #f0fdf4; }
+        .suggestion-card.rejected { border-color: #fecaca; background: #fef2f2; opacity: 0.75; }
+        .suggestion-card.edited { border-color: #93c5fd; background: #eff6ff; }
     </style>
 </head>
-<body class="console-mode-user">
+<body class="console-mode-user module-gate-open">
 
+<!-- Initial module chooser: keeps USER vs ADMIN workflows separate -->
+<section id="module-gate" aria-label="Choose application module">
+    <div class="container" style="max-width: 980px;">
+        <div class="text-center mb-4">
+            <div class="badge bg-light text-dark mb-3 px-3 py-2">Job Search Agent</div>
+            <h1 class="fw-bold display-6 mb-2">Choose your module</h1>
+            <p class="mb-0 opacity-75">Pick <strong>User</strong> for daily job search &amp; resume review, or <strong>Admin</strong> for setup, database, and profile tools. Roles stay separate to avoid confusion.</p>
+        </div>
+        <div class="row g-4">
+            <div class="col-md-6">
+                <div class="module-gate-card" id="enter-user-module" role="button" tabindex="0" onclick="enterModule('user')" onkeydown="if(event.key==='Enter')enterModule('user')">
+                    <div class="module-icon bg-primary-subtle text-primary"><i class="bi bi-person-check"></i></div>
+                    <h3 class="fw-bold h4">USER Module</h3>
+                    <p class="text-muted mb-3">Daily workflow: discover jobs, review AI Optimize suggestions, approve resume drafts, and track applications.</p>
+                    <ul class="small text-muted mb-4">
+                        <li>Dashboard &amp; Job Discovery</li>
+                        <li>Resume Review + AI Optimize</li>
+                        <li>Application Board</li>
+                    </ul>
+                    <span class="btn btn-primary w-100"><i class="bi bi-box-arrow-in-right"></i> Enter User Module</span>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="module-gate-card admin-card" id="enter-admin-module" role="button" tabindex="0" onclick="enterModule('admin')" onkeydown="if(event.key==='Enter')enterModule('admin')">
+                    <div class="module-icon bg-warning-subtle text-warning"><i class="bi bi-shield-lock"></i></div>
+                    <h3 class="fw-bold h4">ADMIN Module</h3>
+                    <p class="text-muted mb-3">Setup &amp; maintenance: profile/skills editor, keyword audit, database explorer, CLI runner, and system health.</p>
+                    <ul class="small text-muted mb-4">
+                        <li>Profile &amp; Skills + AI Profile Optimize</li>
+                        <li>Database Explorer &amp; Cleanup</li>
+                        <li>CLI Runner &amp; Demo Seed</li>
+                    </ul>
+                    <span class="btn btn-warning text-dark w-100"><i class="bi bi-gear-wide-connected"></i> Enter Admin Module</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<div id="app-shell">
 <header class="app-header d-flex justify-content-between align-items-center">
     <div>
         <h4 class="mb-0 fw-bold"><i class="bi bi-robot"></i> Job Search Agent</h4>
         <small class="text-light-50">Automated Review-First Personal Career Assistant (100% Private)</small>
     </div>
-    <div class="d-flex align-items-center gap-2">
+    <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
         <span class="badge bg-light text-dark" id="console-mode-badge">User Mode</span>
-        <button type="button" class="btn btn-sm btn-outline-light" id="console-mode-toggle" onclick="toggleConsoleMode()" title="Switch between daily User view and Admin setup view">
+        <button type="button" class="btn btn-sm btn-outline-light" id="console-mode-home" onclick="showModuleGate()" title="Return to USER / ADMIN module chooser">
+            <i class="bi bi-grid-1x2"></i> Switch Module
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-light" id="console-mode-toggle" onclick="toggleConsoleMode()" title="Quick-switch between User and Admin without returning to the chooser">
             <i class="bi bi-shield-lock"></i> <span id="console-mode-toggle-label">Admin Setup</span>
         </button>
         <a href="/capture" class="btn btn-sm btn-warning text-dark" title="Install or re-install the 1-click Chrome bookmarklet"><i class="bi bi-bookmark-star-fill"></i> Install Bookmarklet</a>
@@ -804,6 +912,39 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
                             </div>
                         </div>
 
+                        <!-- AI Optimize (Jobscan-style) -->
+                        <div class="card border-0 shadow-sm mb-4" id="ai-optimize-panel">
+                            <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2 py-3">
+                                <div>
+                                    <div class="fw-bold"><i class="bi bi-magic text-primary"></i> AI Optimize</div>
+                                    <div class="small text-muted">Keyword weaving, bullet rewrites, and ATS phrasing — accept, reject, or edit each suggestion before applying.</div>
+                                </div>
+                                <div class="d-flex gap-2">
+                                    <button type="button" class="btn btn-sm btn-primary" id="btn-run-optimize" onclick="runAiOptimize()"><i class="bi bi-stars"></i> Run AI Optimize</button>
+                                    <button type="button" class="btn btn-sm btn-outline-success" id="btn-apply-optimize" onclick="applyAcceptedOptimize()" disabled><i class="bi bi-check2-all"></i> Apply Accepted to Draft</button>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div class="row g-3 mb-3" id="optimize-score-row" style="display:none;">
+                                    <div class="col-md-3">
+                                        <div class="stat-card py-2">
+                                            <div class="text-muted small">Profile Readiness</div>
+                                            <div class="stat-value text-primary fs-3" id="opt-readiness">-</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="small fw-semibold mb-1">Matched keywords</div>
+                                        <div id="opt-matched" class="small text-success"></div>
+                                    </div>
+                                    <div class="col-md-5">
+                                        <div class="small fw-semibold mb-1">Recruiter keyword gaps</div>
+                                        <div id="opt-gaps" class="small text-danger"></div>
+                                    </div>
+                                </div>
+                                <div id="optimize-suggestions-list" class="text-muted small">Generate a draft first, then run AI Optimize to see editable suggestions.</div>
+                            </div>
+                        </div>
+
                         <!-- Approval Actions -->
                         <div class="d-flex justify-content-between align-items-center bg-light p-3 rounded border">
                             <div>
@@ -1016,10 +1157,28 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
                             </div>
                         </div>
 
-                        <div class="pt-2">
+                        <div class="pt-2 d-flex flex-wrap gap-2 align-items-center">
                             <button type="submit" class="btn btn-primary"><i class="bi bi-save-fill me-1"></i> Save Profile Configuration to config.yaml</button>
                         </div>
                     </form>
+
+                    <hr class="my-4">
+                    <div class="card border-0 bg-light" id="profile-optimize-panel">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+                                <div>
+                                    <h6 class="fw-bold mb-1"><i class="bi bi-graph-up-arrow text-primary"></i> AI Profile Optimize</h6>
+                                    <p class="small text-muted mb-0">Readiness score, recruiter keyword gaps, skills audit, and draft headline / About summary. Nothing is saved until you copy or apply intentionally.</p>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-primary" onclick="runProfileOptimize()"><i class="bi bi-stars"></i> Analyze Profile</button>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label small fw-semibold" for="prof-opt-jd">Optional target job description or industry role</label>
+                                <textarea class="form-control form-control-sm" id="prof-opt-jd" rows="3" placeholder="Paste a job description or role category (e.g. Staff Backend Engineer) to score against..."></textarea>
+                            </div>
+                            <div id="profile-optimize-results" class="small text-muted">Run Analyze Profile to see readiness, gaps, skills audit, and draft headline/summary.</div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1051,6 +1210,7 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
 
     </div>
 </div>
+</div><!-- /#app-shell -->
 
 <!-- IMPORT URL MODAL -->
 <div class="modal fade" id="importUrlModal" tabindex="-1" aria-hidden="true">
@@ -1257,7 +1417,27 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
 
     const BOOKMARKLET_INSTALLED_KEY = 'job_agent_bookmarklet_installed';
     const CONSOLE_MODE_KEY = 'job_agent_console_mode';
+    const MODULE_ENTERED_KEY = 'job_agent_module_entered';
     const ADMIN_TAB_IDS = ['db-tab', 'profile-tab', 'cheatsheet-tab'];
+    let currentOptimizeBundle = null;
+
+    function showModuleGate() {
+        document.body.classList.add('module-gate-open');
+        localStorage.removeItem(MODULE_ENTERED_KEY);
+    }
+
+    function enterModule(mode) {
+        const normalized = mode === 'admin' ? 'admin' : 'user';
+        localStorage.setItem(MODULE_ENTERED_KEY, '1');
+        document.body.classList.remove('module-gate-open');
+        applyConsoleMode(normalized, true);
+        if (normalized === 'admin') {
+            switchTab('profile-tab');
+        } else {
+            switchTab('dashboard-tab');
+        }
+        if (typeof loadAllData === 'function') loadAllData();
+    }
 
     function applyConsoleMode(mode, persistRemote = true) {
         const normalized = mode === 'admin' ? 'admin' : 'user';
@@ -1296,8 +1476,11 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
     }
 
     function initConsoleMode() {
+        // Always start on the USER / ADMIN module chooser to avoid role confusion.
+        showModuleGate();
         const stored = localStorage.getItem(CONSOLE_MODE_KEY);
         if (stored === 'admin' || stored === 'user') {
+            // Prefill badge/labels only; gate stays open until enterModule().
             applyConsoleMode(stored, false);
             return;
         }
@@ -1801,8 +1984,208 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
                 document.getElementById('rev-final-path').innerText = data.final_resume_path || 'Not finalized yet';
                 document.getElementById('rev-approval-badge').innerText = data.approval_status || 'Awaiting Review';
                 document.getElementById('rev-diff-summary').innerText = data.diff_summary || 'No diff summary available. Click "Generate New Draft" above.';
+                if (data.optimize) {
+                    renderOptimizeBundle(data.optimize);
+                } else {
+                    resetOptimizePanel();
+                }
             })
             .catch(err => alert('❌ Failed loading draft review: ' + err));
+    }
+
+    function resetOptimizePanel() {
+        currentOptimizeBundle = null;
+        const row = document.getElementById('optimize-score-row');
+        if (row) row.style.display = 'none';
+        const list = document.getElementById('optimize-suggestions-list');
+        if (list) list.innerHTML = 'Generate a draft first, then run AI Optimize to see editable suggestions.';
+        const applyBtn = document.getElementById('btn-apply-optimize');
+        if (applyBtn) applyBtn.disabled = true;
+    }
+
+    function renderOptimizeBundle(bundle) {
+        currentOptimizeBundle = bundle || null;
+        const row = document.getElementById('optimize-score-row');
+        const list = document.getElementById('optimize-suggestions-list');
+        const applyBtn = document.getElementById('btn-apply-optimize');
+        if (!bundle) {
+            resetOptimizePanel();
+            return;
+        }
+        if (row) row.style.display = '';
+        document.getElementById('opt-readiness').innerText = `${bundle.readiness_score ?? '-'}%`;
+        document.getElementById('opt-matched').innerText = (bundle.matched_keywords || []).join(', ') || '—';
+        document.getElementById('opt-gaps').innerText = (bundle.keyword_gaps || []).join(', ') || '—';
+        const suggestions = bundle.suggestions || [];
+        if (!suggestions.length) {
+            list.innerHTML = '<span class="text-muted">No suggestions returned.</span>';
+            applyBtn.disabled = true;
+            return;
+        }
+        list.innerHTML = suggestions.map(s => {
+            const statusClass = s.status === 'accepted' ? 'accepted' : (s.status === 'rejected' ? 'rejected' : (s.status === 'edited' ? 'edited' : ''));
+            return `
+            <div class="suggestion-card ${statusClass}" data-sid="${escapeHtml(s.id)}">
+                <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+                    <div>
+                        <span class="badge bg-secondary me-1">${escapeHtml(s.kind)}</span>
+                        <span class="badge bg-light text-dark border">${escapeHtml(s.status)}</span>
+                        ${s.keyword ? `<span class="badge bg-info-subtle text-dark ms-1">${escapeHtml(s.keyword)}</span>` : ''}
+                    </div>
+                    <div class="btn-group btn-group-sm">
+                        <button type="button" class="btn btn-outline-success" onclick="updateOptimizeSuggestion('${s.id}', 'accept')">Accept</button>
+                        <button type="button" class="btn btn-outline-danger" onclick="updateOptimizeSuggestion('${s.id}', 'reject')">Reject</button>
+                        <button type="button" class="btn btn-outline-primary" onclick="editOptimizeSuggestion('${s.id}')">Edit</button>
+                    </div>
+                </div>
+                ${s.original_text ? `<div class="small text-muted mb-1"><strong>Original:</strong> ${escapeHtml(s.original_text)}</div>` : ''}
+                <div class="small mb-1"><strong>Suggested:</strong> ${escapeHtml(s.suggested_text)}</div>
+                <div class="small text-muted">${escapeHtml(s.rationale || '')}</div>
+            </div>`;
+        }).join('');
+        const hasAccepted = suggestions.some(s => s.status === 'accepted' || s.status === 'edited');
+        applyBtn.disabled = !hasAccepted;
+    }
+
+    function runAiOptimize() {
+        if (!currentReviewJobId) return;
+        showProgress(`Running AI Optimize for Job #${currentReviewJobId}...`, 18);
+        fetch('/api/draft/optimize', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ job_id: parseInt(currentReviewJobId) })
+        })
+        .then(async res => {
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || data.message || 'Optimize failed');
+            return data;
+        })
+        .then(data => {
+            finishProgress('AI Optimize suggestions ready', true);
+            renderOptimizeBundle(data.optimize || data);
+        })
+        .catch(err => {
+            finishProgress('AI Optimize failed', false);
+            alert('❌ AI Optimize failed: ' + err.message);
+        });
+    }
+
+    function updateOptimizeSuggestion(suggestionId, action, editedText) {
+        if (!currentReviewJobId) return;
+        const payload = {
+            job_id: parseInt(currentReviewJobId),
+            suggestion_id: suggestionId,
+            action: action
+        };
+        if (editedText !== undefined) payload.edited_text = editedText;
+        fetch('/api/draft/suggestion', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        })
+        .then(async res => {
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Update failed');
+            return data;
+        })
+        .then(data => renderOptimizeBundle(data.optimize || data))
+        .catch(err => alert('❌ Could not update suggestion: ' + err.message));
+    }
+
+    function editOptimizeSuggestion(suggestionId) {
+        const current = (currentOptimizeBundle?.suggestions || []).find(s => s.id === suggestionId);
+        const next = prompt('Edit suggested text:', current?.suggested_text || '');
+        if (next === null) return;
+        updateOptimizeSuggestion(suggestionId, 'edit', next);
+    }
+
+    function applyAcceptedOptimize() {
+        if (!currentReviewJobId) return;
+        if (!confirm('Apply all accepted/edited suggestions into the draft DOCX? Master resume stays unchanged.')) return;
+        showProgress('Applying accepted AI Optimize suggestions...', 25);
+        fetch('/api/draft/optimize/apply', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ job_id: parseInt(currentReviewJobId) })
+        })
+        .then(async res => {
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Apply failed');
+            return data;
+        })
+        .then(data => {
+            finishProgress('Suggestions applied to draft', true);
+            alert('✅ Applied to draft:\\n' + (data.draft_resume_path || ''));
+            loadJobForReview(currentReviewJobId);
+        })
+        .catch(err => {
+            finishProgress('Apply failed', false);
+            alert('❌ ' + err.message);
+        });
+    }
+
+    function runProfileOptimize() {
+        const jd = (document.getElementById('prof-opt-jd')?.value || '').trim();
+        showProgress('Analyzing profile readiness & keyword gaps...', 20);
+        fetch('/api/profile/optimize', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ job_description: jd, industry_role: jd })
+        })
+        .then(async res => {
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Profile optimize failed');
+            return data;
+        })
+        .then(data => {
+            finishProgress('Profile analysis ready', true);
+            const el = document.getElementById('profile-optimize-results');
+            const audit = (data.skills_audit || []).map(a =>
+                `<li><strong>${escapeHtml(a.skill)}</strong> — <em>${escapeHtml(a.action)}</em>: ${escapeHtml(a.reason)}</li>`
+            ).join('');
+            el.innerHTML = `
+                <div class="row g-3 mb-3">
+                    <div class="col-md-3"><div class="stat-card py-2"><div class="text-muted small">Readiness</div><div class="stat-value text-primary fs-3">${data.readiness_score}%</div></div></div>
+                    <div class="col-md-9">
+                        <div class="mb-2"><strong>Matched:</strong> ${escapeHtml((data.matched_keywords||[]).join(', ') || '—')}</div>
+                        <div><strong>Gaps:</strong> ${escapeHtml((data.keyword_gaps||[]).join(', ') || '—')}</div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <div class="fw-semibold mb-1">Draft headline (≤220 chars)</div>
+                    <div class="border rounded p-2 bg-white mb-2" id="prof-opt-headline">${escapeHtml(data.headline || '')}</div>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="navigator.clipboard.writeText(document.getElementById('prof-opt-headline').innerText)">Copy headline</button>
+                </div>
+                <div class="mb-3">
+                    <div class="fw-semibold mb-1">Draft About / summary</div>
+                    <div class="border rounded p-2 bg-white mb-2" id="prof-opt-about">${escapeHtml(data.about_summary || '')}</div>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="navigator.clipboard.writeText(document.getElementById('prof-opt-about').innerText)">Copy summary</button>
+                </div>
+                <div class="mb-2"><strong>Skills audit</strong></div>
+                <ul class="mb-3">${audit || '<li>No audit items</li>'}</ul>
+                <div class="mb-2"><strong>Suggested skills order</strong></div>
+                <div class="border rounded p-2 bg-white mb-2">${escapeHtml((data.suggested_skills_order||[]).join(', '))}</div>
+                <button type="button" class="btn btn-sm btn-outline-primary" onclick="applySuggestedSkillsOrder()">Apply suggested order to Required Skills field</button>
+                <div class="text-muted mt-2">${(data.notes||[]).map(escapeHtml).join(' · ')}</div>
+            `;
+            window.__lastProfileOptimize = data;
+        })
+        .catch(err => {
+            finishProgress('Profile analysis failed', false);
+            alert('❌ ' + err.message);
+        });
+    }
+
+    function applySuggestedSkillsOrder() {
+        const data = window.__lastProfileOptimize;
+        if (!data || !data.suggested_skills_order) return;
+        const field = document.getElementById('prof-req-skills');
+        if (!field) {
+            alert('Could not find required skills field');
+            return;
+        }
+        field.value = data.suggested_skills_order.join(', ');
+        alert('Updated Required Skills field with suggested order. Click Save to persist to config.yaml.');
     }
 
     function createDraftForJob(jobId) {
@@ -2612,6 +2995,12 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
 
                     master_path = profile.get_master_resume_path(j.title) or str(settings.master_resume_path or "Not configured")
 
+                    optimize = None
+                    if j.draft_resume_path:
+                        bundle = load_optimize_bundle(j.draft_resume_path)
+                        if bundle:
+                            optimize = bundle.to_dict()
+
                     payload = {
                         "job_id": j.id,
                         "title": j.title,
@@ -2621,6 +3010,7 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
                         "final_resume_path": j.final_resume_path or j.tailored_resume_path or "",
                         "approval_status": j.approval_status or "Not created",
                         "diff_summary": j.diff_summary or "No draft generated yet.",
+                        "optimize": optimize,
                     }
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json")
@@ -2945,6 +3335,176 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
                     self.wfile.write(json.dumps(payload).encode("utf-8"))
                 finally:
                     session.close()
+
+            elif url_path == "/api/draft/optimize":
+                data = json.loads(body)
+                job_id = int(data.get("job_id", 0))
+                settings = get_settings()
+                profile = load_candidate_profile()
+                SessionLocal = init_db(settings.database_path)
+                session = SessionLocal()
+                try:
+                    job = get_job(session, job_id)
+                    if not job:
+                        self.send_error(404, "Job not found")
+                        return
+                    if not job.draft_resume_path:
+                        self.send_response(400)
+                        self.send_header("Content-Type", "application/json")
+                        self._set_cors_headers()
+                        self.end_headers()
+                        self.wfile.write(json.dumps({"error": "Create a resume draft before running AI Optimize."}).encode("utf-8"))
+                        return
+                    parsed = ParsedJob(
+                        title=job.title,
+                        company=job.company,
+                        location=job.location,
+                        source_platform=job.source_platform,
+                        salary=job.salary,
+                        employment_type=job.employment_type,
+                        job_url=job.job_url or "",
+                        description=job.description or "",
+                    )
+                    match = score_job(parsed, profile)
+                    master_path = Path(profile.get_master_resume_path(job.title) or settings.master_resume_path or "")
+                    bundle = generate_optimize_suggestions(
+                        job=parsed,
+                        match=match,
+                        master_resume_path=master_path,
+                        draft_resume_path=job.draft_resume_path,
+                        job_id=job.id,
+                        settings=settings,
+                    )
+                    log_activity(
+                        session,
+                        event_type="optimize",
+                        title=f"AI Optimize for #{job.id}",
+                        description=f"Generated {len(bundle.suggestions)} suggestions (source={bundle.source}).",
+                        job_id=job.id,
+                    )
+                    payload = {"status": "success", "optimize": bundle.to_dict()}
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self._set_cors_headers()
+                    self.end_headers()
+                    self.wfile.write(json.dumps(payload).encode("utf-8"))
+                finally:
+                    session.close()
+
+            elif url_path == "/api/draft/suggestion":
+                data = json.loads(body)
+                job_id = int(data.get("job_id", 0))
+                suggestion_id = str(data.get("suggestion_id") or "")
+                action = str(data.get("action") or "")
+                edited_text = data.get("edited_text")
+                settings = get_settings()
+                SessionLocal = init_db(settings.database_path)
+                session = SessionLocal()
+                try:
+                    job = get_job(session, job_id)
+                    if not job or not job.draft_resume_path:
+                        self.send_response(404)
+                        self.send_header("Content-Type", "application/json")
+                        self._set_cors_headers()
+                        self.end_headers()
+                        self.wfile.write(json.dumps({"error": "Draft not found for job."}).encode("utf-8"))
+                        return
+                    try:
+                        bundle = update_suggestion(
+                            job.draft_resume_path,
+                            suggestion_id,
+                            action,
+                            edited_text=edited_text,
+                        )
+                    except (LookupError, ValueError) as exc:
+                        self.send_response(400)
+                        self.send_header("Content-Type", "application/json")
+                        self._set_cors_headers()
+                        self.end_headers()
+                        self.wfile.write(json.dumps({"error": str(exc)}).encode("utf-8"))
+                        return
+                    payload = {"status": "success", "optimize": bundle.to_dict()}
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self._set_cors_headers()
+                    self.end_headers()
+                    self.wfile.write(json.dumps(payload).encode("utf-8"))
+                finally:
+                    session.close()
+
+            elif url_path == "/api/draft/optimize/apply":
+                data = json.loads(body)
+                job_id = int(data.get("job_id", 0))
+                settings = get_settings()
+                profile = load_candidate_profile()
+                SessionLocal = init_db(settings.database_path)
+                session = SessionLocal()
+                try:
+                    job = get_job(session, job_id)
+                    if not job or not job.draft_resume_path:
+                        self.send_response(404)
+                        self.send_header("Content-Type", "application/json")
+                        self._set_cors_headers()
+                        self.end_headers()
+                        self.wfile.write(json.dumps({"error": "Draft not found for job."}).encode("utf-8"))
+                        return
+                    master_path = profile.get_master_resume_path(job.title) or settings.master_resume_path
+                    try:
+                        draft_path = apply_accepted_suggestions_to_draft(
+                            job.draft_resume_path,
+                            master_resume_path=master_path,
+                        )
+                    except (LookupError, ValueError, FileNotFoundError) as exc:
+                        self.send_response(400)
+                        self.send_header("Content-Type", "application/json")
+                        self._set_cors_headers()
+                        self.end_headers()
+                        self.wfile.write(json.dumps({"error": str(exc)}).encode("utf-8"))
+                        return
+                    note = "AI Optimize suggestions applied to draft (awaiting final approval)."
+                    job.diff_summary = (job.diff_summary or "") + f"\n\n{note}"
+                    session.commit()
+                    log_activity(
+                        session,
+                        event_type="optimize",
+                        title=f"Applied AI Optimize for #{job.id}",
+                        description=note,
+                        job_id=job.id,
+                    )
+                    payload = {
+                        "status": "success",
+                        "job_id": job.id,
+                        "draft_resume_path": str(draft_path),
+                    }
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self._set_cors_headers()
+                    self.end_headers()
+                    self.wfile.write(json.dumps(payload).encode("utf-8"))
+                finally:
+                    session.close()
+
+            elif url_path == "/api/profile/optimize":
+                data = json.loads(body) if body else {}
+                settings = get_settings()
+                profile = load_candidate_profile()
+                jd = str(data.get("job_description") or "")
+                industry = str(data.get("industry_role") or "")
+                resume_path = profile.get_master_resume_path() or settings.master_resume_path
+                resume_text = extract_resume_text(resume_path) if resume_path else ""
+                result = analyze_profile_against_target(
+                    profile,
+                    job_description=jd,
+                    resume_text=resume_text,
+                    industry_role=industry,
+                )
+                payload = result.to_dict()
+                payload["status"] = "success"
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors_headers()
+                self.end_headers()
+                self.wfile.write(json.dumps(payload).encode("utf-8"))
 
             elif url_path == "/api/jobs/update-status":
                 data = json.loads(body)

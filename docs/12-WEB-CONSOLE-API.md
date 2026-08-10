@@ -23,6 +23,7 @@ Server uses `ThreadingHTTPServer` so long platform searches do not block stats/r
 | `/api/profile` | Candidate profile JSON |
 | `/api/commands` | CLI command metadata for runner tab |
 | `/api/console-settings` | Web Console mode settings (`default_mode`, `guided_flow_pause_seconds`, `setup_locked`) |
+| `/api/draft/get?job_id=` | Draft paths, approval status, diff summary, optional `optimize` bundle |
 | `/api/db/tables` | Database table list |
 | `/api/db/table-data?table=jobs` | Paginated table rows |
 
@@ -39,6 +40,10 @@ Server uses `ThreadingHTTPServer` so long platform searches do not block stats/r
 | `/api/draft/create` | `{ "job_id" }` | Generate resume draft |
 | `/api/draft/approve` | `{ "job_id" }` | Approve draft |
 | `/api/draft/reject` | `{ "job_id" }` | Reject draft |
+| `/api/draft/optimize` | `{ "job_id" }` | AI Optimize: keyword gaps + editable rewrite suggestions |
+| `/api/draft/suggestion` | `{ "job_id", "suggestion_id", "action": "accept\|reject\|edit", "edited_text?" }` | Update one optimize suggestion |
+| `/api/draft/optimize/apply` | `{ "job_id" }` | Apply accepted/edited suggestions into draft DOCX |
+| `/api/profile/optimize` | `{ "job_description?", "industry_role?" }` | Profile readiness, keyword gaps, skills audit, headline/About drafts |
 | `/api/run-command` | `{ "command", "args" }` | Execute CLI from web runner |
 | `/api/console-settings` | `{ "default_mode": "user\|admin", "guided_flow_pause_seconds": 15, "setup_locked": false }` | Persist console mode and guided-flow timing to `config.yaml` |
 | `/api/db/cleanup` | `{ "action" }` | duplicates / stale / all purge |
