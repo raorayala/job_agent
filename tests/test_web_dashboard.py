@@ -38,6 +38,9 @@ def test_get_index_html(web_server):
         assert "Install Bookmarklet" in html
         assert 'id="bookmarklet-install-card"' in html
         assert "function goFindJobsNow" in html
+        assert 'class="form-check-input platform-checkbox"' in html
+        assert "selectRecommendedPlatforms" in html
+        assert "Top 3 Recommended" in html
 
 
 def test_get_api_commands(web_server):
@@ -209,3 +212,20 @@ def test_get_capture_page(web_server):
         assert "1-Click Bookmarklet Installer" in html
         assert "Mark as Installed" in html
         assert "javascript:(function()" in html
+
+
+def test_post_jobs_find_selected_platforms(web_server):
+    payload = json.dumps({"platforms": ["dice"], "limit": 3}).encode("utf-8")
+    req = urllib.request.Request(
+        f"{web_server}/api/jobs/find",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        assert resp.status == 200
+        res = json.loads(resp.read().decode("utf-8"))
+        assert res["status"] == "success"
+        assert res["platforms_searched"] == ["dice"]
+        assert res["limit_per_platform"] == 3
+        assert "jobs_recorded" in res

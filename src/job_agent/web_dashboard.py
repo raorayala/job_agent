@@ -296,8 +296,24 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
             border: 1px solid var(--card-border);
             border-radius: 10px;
             background: #ffffff;
-            padding: 1rem;
+            padding: 0.85rem 0.75rem;
             text-align: center;
+            cursor: pointer;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+        .platform-card:hover {
+            border-color: #93c5fd;
+            box-shadow: 0 2px 8px rgba(37, 99, 235, 0.12);
+        }
+        .platform-card.is-selected {
+            border-color: #2563eb;
+            background: #eff6ff;
+            box-shadow: 0 2px 8px rgba(37, 99, 235, 0.15);
+        }
+        .platform-card .form-check-input {
+            float: none;
+            margin: 0 auto 0.5rem auto;
+            display: block;
         }
         .terminal-box {
             background-color: #0f172a;
@@ -458,7 +474,7 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
                 <div class="card-body d-flex flex-wrap gap-2 align-items-center justify-content-between py-3">
                     <span class="fw-bold"><i class="bi bi-lightning-charge-fill text-warning"></i> Primary Actions:</span>
                     <div class="d-flex gap-2">
-                        <button class="btn btn-primary" onclick="goFindJobsNow()"><i class="bi bi-search"></i> Find Jobs Now (Top 10 Platforms)</button>
+                        <button class="btn btn-primary" onclick="goFindJobsNow()"><i class="bi bi-search"></i> Job Discovery (Select Platforms)</button>
                         <button class="btn btn-outline-primary" onclick="triggerQuickCommand('sync-gmail', [])"><i class="bi bi-envelope-at"></i> Sync Gmail Alerts</button>
                         <button class="btn btn-outline-success" onclick="openImportUrlModal()"><i class="bi bi-link-45deg"></i> Import Job URL</button>
                         <button class="btn btn-warning text-dark" onclick="switchTab('review-tab')"><i class="bi bi-file-earmark-check"></i> Review Resume Drafts</button>
@@ -518,14 +534,20 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
                     <i class="bi bi-globe-americas text-primary"></i> Top 10 USA Job Platforms Adapter Suite
                 </div>
                 <div class="card-body">
-                    <p class="text-muted small mb-3">Search across Indeed, LinkedIn, Glassdoor, Monster, ZipRecruiter, CareerBuilder, SimplyHired, Dice, Wellfound, and Google Jobs (< 10 jobs per platform, posted in last 14 days).</p>
+                    <p class="text-muted small mb-3">Select the job sites you want to search, then click <strong>Find Jobs Now</strong>. Each selected platform returns up to <strong>3 recent jobs</strong> (posted in the last 14 days). The top 3 recommended platforms are pre-selected.</p>
+                    <div class="d-flex flex-wrap gap-2 mb-3">
+                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="selectRecommendedPlatforms()"><i class="bi bi-star-fill"></i> Top 3 Recommended</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="selectAllPlatforms(true)"><i class="bi bi-check2-all"></i> Select All</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="selectAllPlatforms(false)"><i class="bi bi-x-lg"></i> Clear All</button>
+                    </div>
                     <div class="row row-cols-2 row-cols-md-5 g-2 mb-3" id="top-10-platforms-grid">
-                        <!-- Top 10 cards generated dynamically -->
+                        <!-- Platform checkboxes generated dynamically -->
                     </div>
                     <div class="d-flex justify-content-between align-items-center border-top pt-3">
-                        <div class="d-flex gap-2 align-items-center">
-                            <span class="small fw-bold">Platforms:</span>
-                            <span class="badge bg-secondary">Top 10 USA Supported</span>
+                        <div class="d-flex gap-2 align-items-center flex-wrap">
+                            <span class="small fw-bold">Selected:</span>
+                            <span class="badge bg-primary" id="selected-platform-count">0</span>
+                            <span class="small text-muted">· up to 3 jobs per site</span>
                         </div>
                         <button class="btn btn-primary" id="btn-find-jobs-now" onclick="runTop10JobSearch()"><i class="bi bi-search"></i> Find Jobs Now</button>
                     </div>
@@ -926,6 +948,20 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
 
     const KANBAN_STATUSES = ["Imported", "Analyzed", "Resume draft ready", "Awaiting review", "Approved", "Applied", "Interviewing", "Offer", "Rejected"];
     const TOP_10 = ["indeed", "linkedin", "glassdoor", "monster", "ziprecruiter", "careerbuilder", "simplyhired", "dice", "wellfound", "google_jobs"];
+    const DEFAULT_PLATFORMS = ["dice", "ziprecruiter", "indeed"];
+    const SEARCH_LIMIT_PER_PLATFORM = 3;
+    const PLATFORM_LABELS = {
+        indeed: "Indeed",
+        linkedin: "LinkedIn",
+        glassdoor: "Glassdoor",
+        monster: "Monster",
+        ziprecruiter: "ZipRecruiter",
+        careerbuilder: "CareerBuilder",
+        simplyhired: "SimplyHired",
+        dice: "Dice",
+        wellfound: "Wellfound",
+        google_jobs: "Google Jobs",
+    };
 
     function showProgress(statusText, initialPercent = 15, colorClass = 'bg-primary') {
         const wrapper = document.getElementById('global-progress-wrapper');
@@ -1039,7 +1075,36 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
 
     function goFindJobsNow() {
         switchTab('discovery-tab');
-        runTop10JobSearch();
+    }
+
+    function formatPlatformLabel(platformKey) {
+        return PLATFORM_LABELS[platformKey] || platformKey.replace('_', ' ');
+    }
+
+    function updatePlatformSelectionUI() {
+        document.querySelectorAll('.platform-checkbox').forEach(cb => {
+            const card = cb.closest('.platform-card');
+            if (card) card.classList.toggle('is-selected', cb.checked);
+        });
+        const countEl = document.getElementById('selected-platform-count');
+        const selected = getSelectedPlatforms();
+        if (countEl) countEl.innerText = `${selected.length} site${selected.length === 1 ? '' : 's'}`;
+    }
+
+    function getSelectedPlatforms() {
+        return Array.from(document.querySelectorAll('.platform-checkbox:checked')).map(cb => cb.value);
+    }
+
+    function selectRecommendedPlatforms() {
+        document.querySelectorAll('.platform-checkbox').forEach(cb => {
+            cb.checked = DEFAULT_PLATFORMS.includes(cb.value);
+        });
+        updatePlatformSelectionUI();
+    }
+
+    function selectAllPlatforms(checked) {
+        document.querySelectorAll('.platform-checkbox').forEach(cb => { cb.checked = checked; });
+        updatePlatformSelectionUI();
     }
 
     function renderTop10PlatformsGrid() {
@@ -1047,14 +1112,17 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
         if (!grid) return;
         grid.innerHTML = '';
         TOP_10.forEach(p => {
+            const checked = DEFAULT_PLATFORMS.includes(p) ? 'checked' : '';
+            const label = formatPlatformLabel(p);
             grid.innerHTML += `
                 <div class="col">
-                    <div class="platform-card shadow-sm">
-                        <i class="bi bi-check-circle-fill text-success"></i>
-                        <div class="fw-bold text-dark fs-8 text-capitalize mt-1">${p.replace('_', ' ')}</div>
-                    </div>
+                    <label class="platform-card shadow-sm d-block mb-0 ${DEFAULT_PLATFORMS.includes(p) ? 'is-selected' : ''}" for="platform-cb-${p}">
+                        <input type="checkbox" class="form-check-input platform-checkbox" id="platform-cb-${p}" value="${p}" ${checked} onchange="updatePlatformSelectionUI()">
+                        <div class="fw-bold text-dark fs-8">${label}</div>
+                    </label>
                 </div>`;
         });
+        updatePlatformSelectionUI();
     }
 
     function loadAllData() {
@@ -1364,15 +1432,22 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
     }
 
     function runTop10JobSearch() {
+        const selectedPlatforms = getSelectedPlatforms();
+        if (selectedPlatforms.length === 0) {
+            alert('Please select at least one job platform using the checkboxes above.');
+            return;
+        }
+
         const btn = document.getElementById('btn-find-jobs-now');
+        const platformSummary = selectedPlatforms.map(formatPlatformLabel).join(', ');
         btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Searching Top 10 Platforms...';
-        showProgress('Searching across top 10 USA job platforms (<10 jobs, <1-2 weeks old)...', 10);
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Searching...';
+        showProgress(`Searching ${selectedPlatforms.length} selected platform(s) for up to ${SEARCH_LIMIT_PER_PLATFORM} jobs each...`, 10);
 
         fetchWithTimeout('/api/jobs/find', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({platforms: TOP_10})
+            body: JSON.stringify({platforms: selectedPlatforms, limit: SEARCH_LIMIT_PER_PLATFORM})
         }, 300000)
         .then(res => {
             if (!res.ok) throw new Error('HTTP error ' + res.status);
@@ -1382,8 +1457,13 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
             btn.disabled = false;
             btn.innerHTML = '<i class="bi bi-search"></i> Find Jobs Now';
             const count = data.jobs_recorded != null ? data.jobs_recorded : 0;
-            finishProgress(`Search complete! Discovered ${count} jobs across platforms.`, true);
-            alert(`✅ Platform Search Complete!\n\nDiscovered ${count} jobs across platforms.`);
+            const searched = (data.platforms_searched || selectedPlatforms).map(formatPlatformLabel).join(', ');
+            finishProgress(`Search complete! Discovered ${count} jobs.`, true);
+            if (count === 0) {
+                alert(`No jobs found on: ${searched}\n\nTry different platforms (Dice, ZipRecruiter, Indeed are recommended) or update target titles/skills in Profile & Skills Editor.`);
+            } else {
+                alert(`✅ Platform Search Complete!\n\nDiscovered ${count} jobs from:\n${searched}`);
+            }
             loadAllData();
         })
         .catch(err => {
@@ -2166,15 +2246,24 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
 
             elif url_path == "/api/jobs/find":
                 data = json.loads(body)
-                platforms = data.get("platforms") or TOP_10_PLATFORMS
+                platforms = data.get("platforms") or list(TOP_10_PLATFORMS)
+                limit = int(data.get("limit") or 3)
+                limit = min(max(limit, 1), 9)
 
                 settings = get_settings()
                 profile = load_candidate_profile()
                 SessionLocal = init_db(settings.database_path)
                 session = SessionLocal()
                 try:
-                    results = search_and_import_jobs(session, profile, platforms=platforms, limit_per_platform=9)
-                    payload = {"status": "success", "jobs_recorded": len(results)}
+                    results = search_and_import_jobs(
+                        session, profile, platforms=platforms, limit_per_platform=limit
+                    )
+                    payload = {
+                        "status": "success",
+                        "jobs_recorded": len(results),
+                        "platforms_searched": list(platforms),
+                        "limit_per_platform": limit,
+                    }
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json")
                     self._set_cors_headers()

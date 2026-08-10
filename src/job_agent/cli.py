@@ -618,16 +618,16 @@ def search_links_cmd(
 @app.command("fetch-jobs")
 def fetch_jobs_cmd(
     platforms: str = typer.Option("dice,ziprecruiter", "--platforms", help="Comma-separated platforms to search (e.g., 'dice,ziprecruiter')"),
-    limit: int = typer.Option(9, "--limit", help="Max jobs per platform (default: 9, <10 jobs per run)"),
+    limit: int = typer.Option(3, "--limit", help="Max jobs per platform (default: 3, max: 9)"),
 ) -> None:
-    """Fetch and search jobs directly from Dice, ZipRecruiter, and other job sites using config.yaml skills (< 10 jobs per platform, < 1-2 weeks old)."""
+    """Fetch and search jobs directly from Dice, ZipRecruiter, and other job sites using config.yaml skills (default 3 jobs per platform, < 1-2 weeks old)."""
     _, SessionLocal = _init_context()
     profile = load_candidate_profile()
     session = SessionLocal()
 
     platform_list = [p.strip().lower() for p in platforms.split(",") if p.strip()]
 
-    console.print(f"[cyan]Fetching jobs (<10 per platform, posted in last 1-2 weeks) from: {', '.join(platform_list)}...[/cyan]")
+    console.print(f"[cyan]Fetching jobs ({limit} per platform, posted in last 1-2 weeks) from: {', '.join(platform_list)}...[/cyan]")
     try:
         results = search_and_import_jobs(
             session=session,

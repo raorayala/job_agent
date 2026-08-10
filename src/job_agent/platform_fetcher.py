@@ -37,6 +37,10 @@ TOP_10_PLATFORMS = [
     "google_jobs",
 ]
 
+DEFAULT_LIMIT_PER_PLATFORM = 3
+MAX_LIMIT_PER_PLATFORM = 9
+DEFAULT_RECOMMENDED_PLATFORMS = ("dice", "ziprecruiter", "indeed")
+
 
 def identify_platform_from_url(url: str) -> str:
     """Identify the platform name from a job URL domain."""
@@ -137,10 +141,10 @@ def _parse_json_ld_job(html: str, fallback_url: str = "") -> ParsedJob | None:
     return None
 
 
-def fetch_dice_jobs(query: str, location: str = "Remote", limit: int = 9) -> list[ParsedJob]:
+def fetch_dice_jobs(query: str, location: str = "Remote", limit: int = DEFAULT_LIMIT_PER_PLATFORM) -> list[ParsedJob]:
     """Search Dice directly via public search endpoint (posted within last 14 days / 1-2 weeks)."""
     jobs: list[ParsedJob] = []
-    limit = min(limit, 9)
+    limit = min(limit, MAX_LIMIT_PER_PLATFORM)
     try:
         q_enc = urllib.parse.quote(query)
         loc_enc = urllib.parse.quote(location)
@@ -182,10 +186,10 @@ def fetch_dice_jobs(query: str, location: str = "Remote", limit: int = 9) -> lis
     return jobs[:limit]
 
 
-def fetch_ziprecruiter_jobs(query: str, location: str = "Remote", limit: int = 9) -> list[ParsedJob]:
+def fetch_ziprecruiter_jobs(query: str, location: str = "Remote", limit: int = DEFAULT_LIMIT_PER_PLATFORM) -> list[ParsedJob]:
     """Search ZipRecruiter directly via public candidate search endpoint (posted within last 14 days / 1-2 weeks)."""
     jobs: list[ParsedJob] = []
-    limit = min(limit, 9)
+    limit = min(limit, MAX_LIMIT_PER_PLATFORM)
     try:
         q_enc = urllib.parse.quote(query)
         loc_enc = urllib.parse.quote(location)
@@ -204,14 +208,13 @@ def fetch_ziprecruiter_jobs(query: str, location: str = "Remote", limit: int = 9
     return jobs[:limit]
 
 
-def fetch_generic_platform_jobs(platform: str, query: str, location: str = "Remote", limit: int = 9) -> list[ParsedJob]:
+def fetch_generic_platform_jobs(platform: str, query: str, location: str = "Remote", limit: int = DEFAULT_LIMIT_PER_PLATFORM) -> list[ParsedJob]:
     """
     Search platform helper covering Indeed, LinkedIn, Glassdoor, Monster, CareerBuilder,
     SimplyHired, Wellfound, and Google Jobs using RSS/Atom/JSON-LD feeds or search URLs.
-    Result limit is strictly capped under 10.
     """
     jobs: list[ParsedJob] = []
-    limit = min(limit, 9)
+    limit = min(limit, MAX_LIMIT_PER_PLATFORM)
     urls_map = generate_platform_search_urls(query, location)
     target_url = urls_map.get(platform)
     if not target_url:
@@ -337,14 +340,14 @@ def import_job_from_url(url: str) -> ParsedJob:
 def search_and_import_jobs(
     session: Any,
     profile: CandidateProfile,
-    platforms: Sequence[str] = ("dice", "ziprecruiter", "indeed", "linkedin", "glassdoor"),
-    limit_per_platform: int = 9,
+    platforms: Sequence[str] = DEFAULT_RECOMMENDED_PLATFORMS,
+    limit_per_platform: int = DEFAULT_LIMIT_PER_PLATFORM,
 ) -> list[tuple[Any, Any, Any]]:
     """
     Search selected job platforms using target titles and skills from config.yaml,
-    enforcing < 10 jobs limit per platform and posting age filter (last 1-2 weeks).
+    enforcing a per-platform result limit (default 3) and posting age filter (last 1-2 weeks).
     """
-    limit_per_platform = min(limit_per_platform, 9)
+    limit_per_platform = min(max(limit_per_platform, 1), MAX_LIMIT_PER_PLATFORM)
     titles = [t for t in (profile.target_titles or ["Software Engineer"]) if t and t.strip()]
     location = profile.locations[0] if profile.locations else "Remote"
     query = titles[0] if titles else "Software Engineer"
@@ -371,7 +374,7 @@ def search_and_import_jobs(
         session,
         event_type="discovery",
         title=f"Platform Search Discovered {len(recorded_results)} Jobs",
-        description=f"Searched platforms {', '.join(platforms)} for '{query}' (limit < 10 per platform, < 14 days old).",
+        description=f"Searched platforms {', '.join(platforms)} for '{query}' (limit {limit_per_platform} per platform, < 14 days old).",
     )
 
     logger.info("Recorded %d jobs from top platform search.", len(recorded_results))
