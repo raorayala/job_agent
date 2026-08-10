@@ -76,23 +76,24 @@ def click_tab(page: Page, tab_id: str) -> None:
 
 
 def switch_console_mode(page: Page, mode: str) -> None:
-    """Enter USER/ADMIN module chooser path and switch Web Console views."""
+    """Enter USER/ADMIN via module chooser (exclusive modules)."""
     page.wait_for_load_state("networkidle")
-    # New initial page: choose module first when gate is visible
     gate = page.locator("#module-gate")
-    if gate.is_visible():
-        if mode == "admin":
-            page.locator("#enter-admin-module").click()
+    # If already inside app shell, return to chooser first for clean switch
+    if not gate.is_visible():
+        home = page.locator("#console-mode-home")
+        if home.count() and home.first.is_visible():
+            home.first.click()
         else:
-            page.locator("#enter-user-module").click()
-        page.wait_for_selector("#app-shell", state="visible")
+            page.locator("button", has_text="Exit to Module Chooser").click()
+        gate.wait_for(state="visible", timeout=5000)
+    if mode == "admin":
+        page.locator("#enter-admin-module").click()
+    else:
+        page.locator("#enter-user-module").click()
+    page.wait_for_selector("#app-shell", state="visible")
     badge = page.locator("#console-mode-badge")
-    badge.wait_for(state="visible")
-    target = "Admin Mode" if mode == "admin" else "User Mode"
-    if target in (badge.inner_text() or ""):
-        return
-    page.locator("#console-mode-toggle").click()
-    expect(badge).to_contain_text(target, timeout=5000)
+    expect(badge).to_contain_text("Admin Mode" if mode == "admin" else "User Mode", timeout=5000)
 
 
 def enter_module(page: Page, mode: str = "user") -> None:

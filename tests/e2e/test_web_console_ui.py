@@ -1,4 +1,4 @@
-"""E2E tests for admin/user module separation and core console flows."""
+"""E2E tests for exclusive admin/user modules and left sidebar navigation."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.flow_helpers import accept_dialogs, click_tab, enter_module, switch_console_mode
+from tests.e2e.flow_helpers import click_tab, enter_module, switch_console_mode
 
 pytestmark = pytest.mark.e2e
 
@@ -20,25 +20,33 @@ def test_module_gate_shows_user_and_admin(page: Page, web_base_url: str) -> None
     expect(page.locator("#enter-admin-module")).to_contain_text("ADMIN Module")
 
 
-def test_dashboard_user_mode_default(page: Page, web_base_url: str) -> None:
+def test_user_module_exclusive_sidebar(page: Page, web_base_url: str) -> None:
     page.goto(web_base_url)
     enter_module(page, "user")
     expect(page.locator("#console-mode-badge")).to_contain_text("User Mode")
-    expect(page.locator("#user-focus-banner")).to_be_visible()
-    expect(page.locator("#user-setup-status-card")).to_be_visible()
-    expect(page.locator("#system-health-card")).to_be_hidden()
+    expect(page.locator("#app-sidebar")).to_be_visible()
+    expect(page.locator("#user-sidebar-nav")).to_be_visible()
+    expect(page.locator("#admin-sidebar-nav")).to_be_hidden()
+    expect(page.locator("#dashboard-tab")).to_be_visible()
+    expect(page.locator("#cls-tab")).to_contain_text("CLS")
+    expect(page.locator("#discovery-tab")).to_be_visible()
     expect(page.locator("#db-tab")).to_be_hidden()
+    expect(page.locator("#profile-tab")).to_be_hidden()
+    expect(page.locator("#system-health-card")).to_be_hidden()
+    expect(page.locator("#user-focus-banner")).to_be_visible()
 
 
-def test_console_mode_toggle_shows_admin_tools(page: Page, web_base_url: str) -> None:
+def test_admin_module_exclusive_sidebar(page: Page, web_base_url: str) -> None:
     page.goto(web_base_url)
     switch_console_mode(page, "admin")
+    expect(page.locator("#admin-sidebar-nav")).to_be_visible()
+    expect(page.locator("#user-sidebar-nav")).to_be_hidden()
     expect(page.locator("#system-health-card")).to_be_visible()
-    expect(page.locator("#db-tab")).to_be_attached()
-    expect(page.locator("#profile-tab")).to_be_attached()
-    switch_console_mode(page, "user")
-    expect(page.locator("#user-focus-banner")).to_be_visible()
-    expect(page.locator("#db-tab")).to_be_hidden()
+    expect(page.locator("#db-tab")).to_be_visible()
+    expect(page.locator("#profile-tab")).to_be_visible()
+    expect(page.locator("#discovery-tab")).to_be_hidden()
+    expect(page.locator("#review-tab")).to_be_hidden()
+    expect(page.locator("#cls-tab")).to_be_hidden()
 
 
 def test_load_demo_jobs_in_admin_mode(page: Page, web_base_url: str) -> None:
@@ -46,19 +54,20 @@ def test_load_demo_jobs_in_admin_mode(page: Page, web_base_url: str) -> None:
     switch_console_mode(page, "admin")
     page.get_by_role("button", name="Load Demo Jobs").click()
     page.get_by_role("button", name="Load 3 Demo Jobs").click()
-    expect(page.locator("#recent-jobs-table tbody tr").first).to_contain_text("#", timeout=20000)
+    expect(page.locator("#admin-recent-jobs-table tbody tr").first).to_contain_text("#", timeout=20000)
 
 
-def test_main_navigation_user_tabs(page: Page, web_base_url: str) -> None:
+def test_main_navigation_user_web_tasks(page: Page, web_base_url: str) -> None:
     page.goto(web_base_url)
     enter_module(page, "user")
     for tab_id, pane_id in [
         ("#discovery-tab", "#discovery-pane"),
         ("#review-tab", "#review-pane"),
         ("#kanban-tab", "#kanban-pane"),
+        ("#cls-tab", "#cls-pane"),
     ]:
         click_tab(page, tab_id)
-        expect(page.locator(pane_id)).to_be_attached()
+        expect(page.locator(pane_id)).to_be_visible()
 
 
 def test_ai_optimize_panel_on_review_tab(page: Page, web_base_url: str) -> None:
