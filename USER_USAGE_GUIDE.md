@@ -66,6 +66,7 @@ The Web Application Console (`http://localhost:8000/`) gives you complete, 100% 
 
 2. **Dashboard Tab (Pipeline Metrics & Live Activity Feed)**:
    - View metric cards: **Total Discovered Jobs**, **Jobs Requiring Review**, **Drafts Awaiting Approval**, and **Applications In Progress**.
+   - **Install Bookmarklet** card with link to `/capture` and browser-local install status (always available — not limited to first-time setup).
    - High score opportunities table displaying score badges, role titles, company names, platforms, and review/draft actions.
    - Live Activity Feed tracking discovery, import, analysis, draft generation, and approval events.
 
@@ -103,11 +104,21 @@ The Web Application Console (`http://localhost:8000/`) gives you complete, 100% 
 
 ## 1-Click Chrome Bookmarklet Setup
 
+Install anytime from the Web Dashboard — click **Install Bookmarklet** in the header or on the Dashboard card (opens `http://localhost:8000/capture`). You do not need to re-run `setup --open-bookmarklet` unless you want the setup wizard to open that page automatically.
+
 1. Run `python -m job_agent web` in terminal.
-2. In Google Chrome, press `Ctrl + Shift + B` to show Bookmarks Bar.
-3. Right-click Bookmarks Bar -> **Add page...**
-   - **Name**: `Capture Job`
-   - **URL**:
+2. In the dashboard, click **Install Bookmarklet** (header or Dashboard card).
+3. On the `/capture` page: show Chrome Bookmarks Bar (`Ctrl + Shift + B`), add a bookmark named **Capture Job**, and paste the snippet (or click **Copy Bookmarklet Code**).
+4. Click **Send Test Capture Payload** to confirm the server endpoint works.
+5. Click **Mark as Installed** so the dashboard remembers setup in this browser (local tracking only — Chrome cannot expose bookmark bar state to web apps).
+6. While browsing job sites, click **`Capture Job`** on Chrome's bar (server must be running).
+
+Alternative during first-time setup:
+```powershell
+python -m job_agent setup --open-bookmarklet
+```
+
+Bookmarklet JavaScript (also shown on `/capture`):
 ```javascript
 javascript:(function(){
   const title = document.querySelector('h1')?.innerText || document.title;
@@ -125,7 +136,6 @@ javascript:(function(){
   .catch(err => alert('❌ Error: Make sure "python -m job_agent web" is running in terminal.'));
 })();
 ```
-4. Click **`Capture Job`** on Chrome's bar while viewing any job on Indeed, Dice, ZipRecruiter, Glassdoor, or LinkedIn!
 
 ---
 

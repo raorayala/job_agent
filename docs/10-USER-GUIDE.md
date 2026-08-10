@@ -11,7 +11,7 @@ The **Job Search Agent** is a private, local-first personal career assistant des
 ### Key Capabilities
 - **Job Discovery (4 Methods)**:
   1. Direct Platform Search (`fetch-jobs` for Dice & ZipRecruiter)
-  2. 1-Click Chrome Bookmarklet (`serve` on `localhost:8000`)
+  2. 1-Click Chrome Bookmarklet (`web` on `localhost:8000/capture`)
   3. Pre-formatted Browser Query Links (`search-links --open`)
   4. Gmail Alert Sync (`sync-gmail` via OAuth 2.0)
 - **Explainable Match Engine**: 0–100 weighted scoring comparing job details against your candidate profile AND master DOCX resume text.
@@ -64,7 +64,7 @@ python -m job_agent profile
 ## 3. How to Discover & Import Jobs (No Gmail Required)
 
 ### Method A: Interactive Web Console & 1-Click Chrome Bookmarklet (Recommended)
-1. Initialize local setup (optionally opens the Chrome bookmarklet setup page in your browser):
+1. Initialize local setup (optional — can also open bookmarklet page during setup):
    ```powershell
    python -m job_agent setup --open-bookmarklet
    ```
@@ -74,24 +74,13 @@ python -m job_agent profile
    ```
 3. Open `http://localhost:8000/` in Google Chrome to manage your job search pipeline:
    - **Global Event Progress Bar**: Real-time visual progress feedback (`#global-progress-wrapper`) for all web console actions.
+   - **Install Bookmarklet**: Header button or Dashboard card opens `/capture` anytime (copy snippet, test endpoint, mark install status in this browser).
    - **Top 10 USA Platform Search**: Search Indeed, LinkedIn, Glassdoor, Monster, ZipRecruiter, CareerBuilder, SimplyHired, Dice, Wellfound, and Google Jobs.
    - **URL Job Import Modal**: Paste any job URL to extract details and score alignment automatically.
    - **Resume Review & Approval Page**: Compare Master Resume vs Tailored Draft (`_drafts/`) vs Finalized Resume (`jobapplied`). Click *"Approve & Finalize Resume"* to promote the approved draft to your `Jobs Applied` folder.
    - **Profile & Skills Editor**: Field-by-field helper text showing live `config.yaml` values, with quick keyword addition controls.
-  const description = document.querySelector('#jobDescriptionText, .job-description, .description, #job-description')?.innerText || document.body.innerText.slice(0, 3000);
-
-  fetch('http://localhost:8000/capture', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({title, company, url, description})
-  })
-  .then(res => res.json())
-  .then(data => alert(`✅ Job Saved to Job Agent!\n\nID: #${data.job_id}\nTitle: ${data.title}\nCompany: ${data.company}\nMatch Score: ${data.score}/100`))
-  .catch(err => alert('❌ Error: Make sure "python -m job_agent serve" is running in terminal.'));
-})();
-```
-
-4. When viewing any job on **Indeed, Dice, ZipRecruiter, or Glassdoor**, click **`Capture Job`** on your Chrome bar to save it instantly.
+4. On `http://localhost:8000/capture`: show Chrome Bookmarks Bar (`Ctrl + Shift + B`), add bookmark **Capture Job** with the JavaScript snippet, run **Send Test Capture Payload**, then **Mark as Installed**.
+5. When viewing any job on **Indeed, Dice, ZipRecruiter, Glassdoor, or LinkedIn**, click **`Capture Job`** on your Chrome bar to save it instantly (keep `python -m job_agent web` running).
 
 ### Method B: Direct Platform Search (`fetch-jobs`)
 Fetch jobs directly from platforms without opening a browser:

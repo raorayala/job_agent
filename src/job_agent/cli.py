@@ -103,10 +103,10 @@ def setup_cmd(
 6. Authorized redirect URIs are handled by the local loopback server on first auth
    (google-auth-oauthlib). Scope used: gmail.readonly only.
 
-[cyan]1-Click Bookmarklet Endpoint (Setup Process Only)[/cyan]
+[cyan]1-Click Bookmarklet Endpoint[/cyan]
 - Bookmarklet Setup URL: http://localhost:8000/capture
-- Install during setup by copying snippet to Chrome Bookmarks Bar
-- Run 'python -m job_agent setup --open-bookmarklet' to open setup page in browser
+- Install anytime from the Web Dashboard header or dashboard "Install Bookmarklet" card
+- Run 'python -m job_agent setup --open-bookmarklet' to open setup page during first-time setup
 
 [cyan]Personal files[/cyan]
 - Copy .env.example -> .env and set MASTER_RESUME_PATH

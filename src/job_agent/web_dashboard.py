@@ -360,6 +360,7 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
         <small class="text-light-50">Automated Review-First Personal Career Assistant (100% Private)</small>
     </div>
     <div class="d-flex align-items-center gap-2">
+        <a href="/capture" class="btn btn-sm btn-warning text-dark" title="Install or re-install the 1-click Chrome bookmarklet"><i class="bi bi-bookmark-star-fill"></i> Install Bookmarklet</a>
         <button class="btn btn-sm btn-outline-light" onclick="openImportUrlModal()"><i class="bi bi-link-45deg"></i> Import URL</button>
         <a href="/api/calendar.ics" class="btn btn-sm btn-outline-light"><i class="bi bi-calendar-event"></i> .ics Calendar</a>
         <button class="btn btn-sm btn-primary" onclick="loadAllData()"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
@@ -430,6 +431,23 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
                     <div class="stat-card">
                         <div class="text-muted small">Applications In Progress</div>
                         <div class="stat-value text-success" id="stat-applied-count">-</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chrome Bookmarklet Install Card (always available from dashboard) -->
+            <div class="card border-0 shadow-sm mb-4" id="bookmarklet-install-card">
+                <div class="card-body d-flex flex-wrap gap-3 align-items-center justify-content-between py-3">
+                    <div>
+                        <div class="fw-bold mb-1"><i class="bi bi-bookmark-star-fill text-warning"></i> Chrome Bookmarklet</div>
+                        <div class="text-muted small mb-0">
+                            Save jobs from Indeed, LinkedIn, Dice, and other sites with one click while browsing.
+                            <span id="bookmarklet-install-status" class="ms-1"></span>
+                        </div>
+                    </div>
+                    <div class="d-flex gap-2 flex-wrap">
+                        <a href="/capture" class="btn btn-warning text-dark"><i class="bi bi-bookmark-plus"></i> Install Bookmarklet</a>
+                        <button class="btn btn-outline-secondary btn-sm" onclick="clearBookmarkletInstalledFlag()" id="bookmarklet-reset-btn" style="display:none;"><i class="bi bi-arrow-counterclockwise"></i> Reset Install Status</button>
                     </div>
                 </div>
             </div>
@@ -984,8 +1002,35 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
         }, waitMs);
     }
 
+    const BOOKMARKLET_INSTALLED_KEY = 'job_agent_bookmarklet_installed';
+
+    function updateBookmarkletInstallStatus() {
+        const statusEl = document.getElementById('bookmarklet-install-status');
+        const resetBtn = document.getElementById('bookmarklet-reset-btn');
+        if (!statusEl) return;
+        const installed = localStorage.getItem(BOOKMARKLET_INSTALLED_KEY) === 'true';
+        if (installed) {
+            statusEl.innerHTML = '<span class="badge bg-success"><i class="bi bi-check-circle-fill"></i> Marked installed in this browser</span>';
+            if (resetBtn) resetBtn.style.display = '';
+        } else {
+            statusEl.innerHTML = '<span class="badge bg-secondary">Not confirmed in this browser yet</span>';
+            if (resetBtn) resetBtn.style.display = 'none';
+        }
+    }
+
+    function markBookmarkletInstalled() {
+        localStorage.setItem(BOOKMARKLET_INSTALLED_KEY, 'true');
+        updateBookmarkletInstallStatus();
+    }
+
+    function clearBookmarkletInstalledFlag() {
+        localStorage.removeItem(BOOKMARKLET_INSTALLED_KEY);
+        updateBookmarkletInstallStatus();
+    }
+
     document.addEventListener("DOMContentLoaded", function() {
         renderTop10PlatformsGrid();
+        updateBookmarkletInstallStatus();
         loadAllData();
         loadCommandsMetadata();
         fetchProfile();
@@ -1765,15 +1810,37 @@ HTML_CAPTURE_PAGE = """<!DOCTYPE html>
 
             <div class="code-box mb-3" id="bm-code">javascript:(function(){const title=document.querySelector('h1')?.innerText||document.title;const company=document.querySelector('[data-testid="inlineHeader-companyName"], .companyName, .company-name, [data-cy="search-result-company-name"]')?.innerText||"Unknown";const url=window.location.href;const description=document.querySelector('#jobDescriptionText, .job-description, .description, #job-description')?.innerText||document.body.innerText.slice(0,3000);fetch('http://localhost:8000/capture',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,company,url,description})}).then(res=>res.json()).then(data=>alert(`✅ Job Saved!\n\nID: #${data.job_id}\nTitle: ${data.title}\nCompany: ${data.company}\nScore: ${data.score}/100`)).catch(err=>alert('❌ Error: Make sure "python -m job_agent web" is running.'));})();</div>
 
-            <div class="d-flex gap-2">
+            <div class="d-flex gap-2 flex-wrap">
                 <button class="btn btn-outline-primary" onclick="copyBookmarkletCode()"><i class="bi bi-clipboard"></i> Copy Bookmarklet Code</button>
                 <button class="btn btn-outline-success" onclick="testCaptureEndpoint()"><i class="bi bi-play-circle-fill"></i> Send Test Capture Payload</button>
+                <button class="btn btn-success" onclick="markBookmarkletInstalledOnCapturePage()"><i class="bi bi-check2-circle"></i> Mark as Installed</button>
                 <a href="/" class="btn btn-primary ms-auto"><i class="bi bi-speedometer2"></i> Open Web Dashboard</a>
             </div>
+            <div class="mt-3 small text-muted" id="capture-install-status"></div>
         </div>
     </div>
 </div>
 <script>
+const BOOKMARKLET_INSTALLED_KEY = 'job_agent_bookmarklet_installed';
+
+function updateCaptureInstallStatus() {
+    const el = document.getElementById('capture-install-status');
+    if (!el) return;
+    if (localStorage.getItem(BOOKMARKLET_INSTALLED_KEY) === 'true') {
+        el.innerHTML = '<span class="badge bg-success"><i class="bi bi-check-circle-fill"></i> This browser is marked as having the bookmarklet installed.</span>';
+    } else {
+        el.innerHTML = 'After adding the bookmark to Chrome, click <strong>Mark as Installed</strong> so the dashboard remembers your setup.';
+    }
+}
+
+function markBookmarkletInstalledOnCapturePage() {
+    localStorage.setItem(BOOKMARKLET_INSTALLED_KEY, 'true');
+    updateCaptureInstallStatus();
+    alert('✅ Bookmarklet marked as installed in this browser. You can revisit this page anytime from the dashboard Install Bookmarklet link.');
+}
+
+document.addEventListener('DOMContentLoaded', updateCaptureInstallStatus);
+
 function copyBookmarkletCode() {
     const code = document.getElementById('bm-code').innerText;
     navigator.clipboard.writeText(code);

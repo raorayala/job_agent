@@ -14,6 +14,7 @@ python -m job_agent web
 
 This opens `http://localhost:8000/` in your browser featuring:
 - **Global Event Progress Bar**: Real-time animated progress bar (`#global-progress-wrapper`) displaying event status messages and completion percentage for all web actions.
+- **Install Bookmarklet**: Header button and Dashboard card open `/capture` anytime to copy the snippet, test the endpoint, and mark install status in this browser.
 - **Interactive CLI Cheat Sheet**: Form controls and **"▶ Run Command"** buttons for all CLI commands.
 - **Live Terminal Console**: Streams command output and server logs directly onto the web page.
 - **Top 10 USA Job Discovery**: Platform cards for Indeed, LinkedIn, Glassdoor, Monster, ZipRecruiter, CareerBuilder, SimplyHired, Dice, Wellfound, and Google Jobs.
@@ -65,6 +66,19 @@ python -m job_agent mark-applied <job_id> --confirm
 python -m job_agent dashboard
 python -m job_agent follow-ups
 ```
+
+---
+
+## 🔖 1-Click Chrome Bookmarklet
+
+| Where | What |
+| :--- | :--- |
+| Dashboard header | **Install Bookmarklet** → `http://localhost:8000/capture` |
+| Dashboard tab | Chrome Bookmarklet card with install status (browser-local) |
+| `/capture` page | Copy snippet, test endpoint, **Mark as Installed** |
+| First-time setup | `python -m job_agent setup --open-bookmarklet` (optional) |
+
+Keep `python -m job_agent web` running while using the bookmark on job sites.
 
 ---
 

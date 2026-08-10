@@ -80,6 +80,7 @@ python -m job_agent web
 ```
 This launches `http://localhost:8000/` featuring:
 - **Global Progress Bar**: Real-time event feedback and status percentages for all actions.
+- **Install Bookmarklet**: Header button and Dashboard card link to `/capture` — install or re-install the 1-click Chrome bookmarklet anytime (requires `python -m job_agent web` running). Click **Mark as Installed** on `/capture` to track setup in this browser (localStorage).
 - **Dashboard**: Summary cards for New Jobs, Jobs Requiring Review, Drafts Awaiting Approval, Applications in Progress, plus live Activity Feed.
 - **Top 10 Job Discovery Page**: Platform cards for all top 10 USA platforms, search query links (<14 days old), and "Find Jobs Now".
 - **Automated URL Job Import**: Paste a job page URL to automatically extract title, company, location, and description.

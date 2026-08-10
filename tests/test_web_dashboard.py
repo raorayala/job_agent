@@ -34,6 +34,9 @@ def test_get_index_html(web_server):
         assert 'id="preview-locations"' in html
         assert 'id="preview-salary"' in html
         assert 'id="preview-salary-max"' in html
+        assert 'href="/capture"' in html
+        assert "Install Bookmarklet" in html
+        assert 'id="bookmarklet-install-card"' in html
 
 
 def test_get_api_commands(web_server):
@@ -195,3 +198,13 @@ def test_post_capture_job(web_server):
         assert res["status"] == "success"
         assert res["title"] == "Senior Web Architect"
         assert res["company"] == "WebCorp Local"
+
+
+def test_get_capture_page(web_server):
+    req = urllib.request.Request(f"{web_server}/capture")
+    with urllib.request.urlopen(req, timeout=5) as resp:
+        assert resp.status == 200
+        html = resp.read().decode("utf-8")
+        assert "1-Click Bookmarklet Installer" in html
+        assert "Mark as Installed" in html
+        assert "javascript:(function()" in html
