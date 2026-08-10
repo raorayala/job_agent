@@ -4,10 +4,14 @@
 
 Persistence uses **SQLite** (default `./data/jobs.db`) via SQLAlchemy 2.x.
 
-Two primary tables in Milestone 1:
+Six primary tables:
 
-- `jobs` — discovered / tracked opportunities (“Jobs Applied” view)
+- `jobs` — discovered / tracked opportunities (“Jobs Applied” view) with B-Tree indexes
 - `processed_emails` — incremental Gmail sync cursor by message ID
+- `activity_logs` — audit feed for discovery, import, analysis, draft generation, and approval events
+- `contacts` — networking contacts linked to jobs
+- `interviews` — interview dates, types, participants, and prep tasks
+- `application_answers` — reusable Q&A answer library
 
 ## 2. Entity relationship
 
@@ -16,10 +20,10 @@ processed_emails (gmail_message_id)
         │
         │ 1:N (logical; jobs also store gmail_message_id)
         ▼
-      jobs
+      jobs ◄─── contacts (job_id)
+        │  ◄─── interviews (job_id)
+        │  ◄─── activity_logs (job_id)
 ```
-
-Application history is embedded on `jobs` (status, date_applied, notes, resume path) rather than a separate applications table in v0.1. A separate applications history table may be added later if multiple apply attempts per job are needed.
 
 ## 3. Table: `jobs`
 
@@ -29,32 +33,35 @@ Application history is embedded on `jobs` (status, date_applied, notes, resume p
 | `title` | VARCHAR(300) | Job title |
 | `company` | VARCHAR(200) | Default `Unknown` |
 | `location` | VARCHAR(200) NULL | |
-| `source_platform` | VARCHAR(50) | ziprecruiter, indeed, … |
+| `source_platform` | VARCHAR(50) | indeed, linkedin, ziprecruiter, … |
 | `job_url` | VARCHAR(1000) | Original URL |
 | `job_url_normalized` | VARCHAR(1000) UNIQUE | Dedupe key |
-| `salary` | VARCHAR(200) NULL | Raw string from email |
+| `salary` | VARCHAR(200) NULL | Raw salary string |
 | `employment_type` | VARCHAR(100) NULL | |
-| `description` | TEXT NULL | Truncated email/body extract |
-| `date_discovered` | DATETIME TZ | Default UTC now |
+| `description` | TEXT NULL | Job description extract |
+| `date_discovered` | DATETIME TZ | Default UTC now (Indexed) |
 | `date_applied` | DATETIME TZ NULL | Set on Applied |
-| `follow_up_date` | DATETIME TZ NULL | |
-| `status` | VARCHAR(50) | See statuses |
-| `match_score` | FLOAT NULL | 0–100 |
-| `recommendation` | VARCHAR(50) NULL | Strong match, … |
-| `match_summary` | TEXT NULL | |
+| `follow_up_date` | DATETIME TZ NULL | Auto-set on Applied |
+| `status` | VARCHAR(50) | See ApplicationStatus (Indexed) |
+| `match_score` | FLOAT NULL | 0–100 (Indexed) |
+| `recommendation` | VARCHAR(50) NULL | Strong match, Worth reviewing, Low match, Excluded |
+| `match_summary` | TEXT NULL | Explainable summary |
 | `matched_skills` | TEXT NULL | Serialized list |
 | `missing_skills` | TEXT NULL | Serialized list |
 | `concerns` | TEXT NULL | Serialized list |
 | `tailored_resume_path` | VARCHAR(1000) NULL | |
-| `notes` | TEXT NULL | |
-| `gmail_message_id` | VARCHAR(200) UNIQUE NULL | Traceability |
+| `draft_resume_path` | VARCHAR(1000) NULL | Path in `_drafts/` folder |
+| `draft_summary_path` | VARCHAR(1000) NULL | Path to draft summary |
+| `final_resume_path` | VARCHAR(1000) NULL | Path in `jobapplied` folder |
+| `approval_status` | VARCHAR(50) NULL | Awaiting Review, Approved, Rejected |
+| `diff_summary` | TEXT NULL | Keyword alignment diff |
+| `notes` / `user_notes` | TEXT NULL | Notes and user overrides |
+| `gmail_message_id` | VARCHAR(200) NULL | Gmail message ID (Indexed) |
 | `is_duplicate` | BOOLEAN | Default false |
-| `duplicate_of_id` | INTEGER NULL | FK-like to jobs.id |
-| `duplicate_reason` | VARCHAR(300) NULL | |
-| `company_normalized` | VARCHAR(200) NULL | Dedupe helper |
-| `title_normalized` | VARCHAR(300) NULL | |
-| `location_normalized` | VARCHAR(200) NULL | |
-| `created_at` / `updated_at` | DATETIME TZ | Audit |
+| `company_normalized` / `title_normalized` | VARCHAR NULL | Dedupe index (`ix_jobs_company_title_norm`) |
+| `priority` | FLOAT | Default 50.0 |
+| `is_stale` | BOOLEAN | Default false |
+| `created_at` / `updated_at` | DATETIME TZ | Audit timestamps |
 
 ## 4. Table: `processed_emails`
 

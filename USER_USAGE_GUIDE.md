@@ -1,6 +1,6 @@
 # User Usage Guide — Local AI Job Search Agent
 
-A private, local-first personal career assistant with a review-first web application.
+A private, local-first personal career assistant with an interactive review-first web application, real-time progress bar, and CLI command suite.
 
 ---
 
@@ -12,10 +12,13 @@ Launch the Web Console in your browser to discover jobs across the top 10 USA pl
 python -m job_agent web
 ```
 
-Or run individual commands in your terminal:
+Or run setup and CLI commands in your terminal:
 
 ```powershell
-# 1. Start Web Console & 1-click Chrome bookmarklet server
+# 0. First-time setup (optionally opens 1-click Chrome bookmarklet page)
+python -m job_agent setup --open-bookmarklet
+
+# 1. Start Web Console & CLI Runner on http://localhost:8000/
 python -m job_agent web
 
 # 2. Open automated search query links for top 10 USA platforms (posted in last 1-2 weeks)
@@ -56,18 +59,14 @@ python -m job_agent follow-ups
 
 The Web Application Console (`http://localhost:8000/`) gives you complete, 100% private visual control over your job search pipeline.
 
-### Step-by-Step Usage Guide:
+### Key Interactive Features:
 
-1. **Launching the Web Application**:
-   Open PowerShell and start the Web Console:
-   ```powershell
-   python -m job_agent web
-   ```
-   This automatically opens `http://localhost:8000/` in your system default browser.
+1. **Global Event Progress Bar**:
+   - Every user click and background operation (platform search, URL import, draft generation, approval, profile saving, database cleanup, CLI execution) triggers a top-level animated progress bar (`#global-progress-wrapper`) displaying real-time status messages and completion percentage.
 
 2. **Dashboard Tab (Pipeline Metrics & Live Activity Feed)**:
    - View metric cards: **Total Discovered Jobs**, **Jobs Requiring Review**, **Drafts Awaiting Approval**, and **Applications In Progress**.
-   - Primary Action buttons: **Find Jobs Now**, **Sync Gmail Alerts**, **Import Job URL**, and **Review Resume Drafts**.
+   - High score opportunities table displaying score badges, role titles, company names, platforms, and review/draft actions.
    - Live Activity Feed tracking discovery, import, analysis, draft generation, and approval events.
 
 3. **Job Discovery Tab (Top 10 USA Platforms)**:
@@ -96,8 +95,9 @@ The Web Application Console (`http://localhost:8000/`) gives you complete, 100% 
    - Execute SQL queries directly or run automated cleanup routines (duplicates, stale jobs, purge test data).
 
 8. **Profile & Skills Editor Tab (`config.yaml`)**:
-   - Edit target job titles, required skills, preferred skills, experience years, salary range, and locations directly in browser.
-   - Click **Save Profile Configuration** to save changes to `config.yaml`.
+   - Optional profile configuration with field-by-field helper labels displaying live `Config.yaml current: ...` text underneath every input element.
+   - Quick Add input fields and preset buttons for salary range (`$100k`–`$250k`) and work modes.
+   - Click **Save Profile Configuration** to persist changes directly to `config.yaml`.
 
 ---
 

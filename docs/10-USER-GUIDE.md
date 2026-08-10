@@ -63,21 +63,21 @@ python -m job_agent profile
 
 ## 3. How to Discover & Import Jobs (No Gmail Required)
 
-### Method A: 1-Click Chrome Bookmarklet (Recommended)
-1. In terminal, start the local capture server:
+### Method A: Interactive Web Console & 1-Click Chrome Bookmarklet (Recommended)
+1. Initialize local setup (optionally opens the Chrome bookmarklet setup page in your browser):
    ```powershell
-   python -m job_agent serve
+   python -m job_agent setup --open-bookmarklet
    ```
-2. In Google Chrome, press `Ctrl + Shift + B` to show the Bookmarks Bar.
-3. Right-click the Bookmarks Bar -> Click **Add page...**
-   - **Name**: `Capture Job`
-   - **URL**: Paste the JavaScript snippet below:
-
-```javascript
-javascript:(function(){
-  const title = document.querySelector('h1')?.innerText || document.title;
-  const company = document.querySelector('[data-testid="inlineHeader-companyName"], .companyName, .company-name, [data-cy="search-result-company-name"]')?.innerText || "Unknown";
-  const url = window.location.href;
+2. Start the interactive Web Console server:
+   ```powershell
+   python -m job_agent web
+   ```
+3. Open `http://localhost:8000/` in Google Chrome to manage your job search pipeline:
+   - **Global Event Progress Bar**: Real-time visual progress feedback (`#global-progress-wrapper`) for all web console actions.
+   - **Top 10 USA Platform Search**: Search Indeed, LinkedIn, Glassdoor, Monster, ZipRecruiter, CareerBuilder, SimplyHired, Dice, Wellfound, and Google Jobs.
+   - **URL Job Import Modal**: Paste any job URL to extract details and score alignment automatically.
+   - **Resume Review & Approval Page**: Compare Master Resume vs Tailored Draft (`_drafts/`) vs Finalized Resume (`jobapplied`). Click *"Approve & Finalize Resume"* to promote the approved draft to your `Jobs Applied` folder.
+   - **Profile & Skills Editor**: Field-by-field helper text showing live `config.yaml` values, with quick keyword addition controls.
   const description = document.querySelector('#jobDescriptionText, .job-description, .description, #job-description')?.innerText || document.body.innerText.slice(0, 3000);
 
   fetch('http://localhost:8000/capture', {

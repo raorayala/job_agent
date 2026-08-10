@@ -33,21 +33,23 @@
 - Lightweight HTTP server running on `http://localhost:8000`.
 - CORS preflight and JSON POST payload handling for 1-click Chrome bookmarklet capture.
 
-### 3.3 CLI Enhancements (`cli.py`)
-- **`search-links`**: Generates query links with 1-2 week freshness filters; `--open` flag explicitly launches Google Chrome on Windows (`_open_in_browser`).
-- **`fetch-jobs`**: Fetches direct platform listings with `--limit 9` (<10 jobs) and 14-day freshness.
-- Full suite of commands: `serve`, `search-links`, `fetch-jobs`, `sync-gmail`, `analyze`, `jobs`, `tailor`, `mark-applied`, `add-contact`, `contacts`, `add-interview`, `prepare-interview`, `answers`, `add-answer`, `suggest-answer`, `dashboard`, `follow-ups`, `report`, `backup`, `restore`, `delete-job`, `purge-data`.
+### 3.3 CLI & Web Application Console (`cli.py`, `web_dashboard.py`)
+- **`web`**: Launches Web Application Console at `http://localhost:8000/` with global event progress bar, 3-way resume draft review, Kanban board, Database Explorer, Profile Editor previews, and interactive CLI runner.
+- **`search-links`**: Generates query links for top 10 USA platforms with 1-2 week freshness filters; `--open` flag launches default browser (`_open_in_browser`).
+- **`fetch-jobs`**: Directly fetches platform listings with `--limit 9` (<10 jobs) and 14-day freshness.
+- Full suite of commands: `serve`, `web`, `search-links`, `fetch-jobs`, `sync-gmail`, `analyze`, `jobs`, `tailor`, `approve-draft`, `reject-draft`, `mark-applied`, `add-contact`, `contacts`, `add-interview`, `prepare-interview`, `answers`, `add-answer`, `suggest-answer`, `dashboard`, `follow-ups`, `report`, `backup`, `restore`, `delete-job`, `purge-data`.
 
-## 4. Coding standards
+## 4. Coding standards & SOLID Principles
 
 | Practice | Convention |
 |----------|------------|
-| Types | Type hints on public functions |
-| Style | Python 3.11+, dataclasses with `slots` where used |
-| Logging | `logging_config.setup_logging()` + module loggers |
-| Errors | Specific exceptions (`LookupError`, `PermissionError`, `NotImplementedError` for stubs) |
-| Tests | pytest; temp DB paths via `tmp_path` |
-| Secrets | Never hardcode; never commit `.env` / tokens |
+| Types | 100% Type hints on public functions and domain dataclasses |
+| Style | Python 3.11+, Google/Sphinx-style docstrings on public modules and functions |
+| Logging | `logging_config.setup_logging()` + structured Python `logger.info` for HTTP requests |
+| SOLID | Single Responsibility, Open/Closed adapters, Interface Segregation, Dependency Inversion |
+| Optimization | Flyweight LRU caching for regex and similarity; B-Tree SQLite indexes |
+| Tests | pytest (46 passing unit/integration tests) |
+| Secrets | Never hardcode; never commit `.env`, `credentials.json`, or `token.json` |
 
 ## 5. Key algorithms (planned / partial)
 

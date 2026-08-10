@@ -1,6 +1,6 @@
 # CLI Command Cheat Sheet — Job Search Agent
 
-A comprehensive reference guide for all CLI commands, review-first resume approvals, maintenance procedures, web application controls, and security safeguards in the **Job Search Agent** local-first personal career assistant.
+A comprehensive reference guide for all CLI commands, review-first resume approvals, maintenance procedures, web application controls, progress bar events, and security safeguards in the **Job Search Agent** local-first personal career assistant.
 
 ---
 
@@ -13,50 +13,55 @@ python -m job_agent web
 ```
 
 This opens `http://localhost:8000/` in your browser featuring:
+- **Global Event Progress Bar**: Real-time animated progress bar (`#global-progress-wrapper`) displaying event status messages and completion percentage for all web actions.
 - **Interactive CLI Cheat Sheet**: Form controls and **"▶ Run Command"** buttons for all CLI commands.
-- **Live Terminal Console**: Streams command output directly onto the web page.
+- **Live Terminal Console**: Streams command output and server logs directly onto the web page.
 - **Top 10 USA Job Discovery**: Platform cards for Indeed, LinkedIn, Glassdoor, Monster, ZipRecruiter, CareerBuilder, SimplyHired, Dice, Wellfound, and Google Jobs.
 - **Automated URL Import Modal**: Paste a job page URL to extract details automatically.
 - **Resume Review & Approval Screen**: 3-way view (Master Resume vs Draft Resume vs Finalized Resume) with explicit approval controls.
 - **Visual Kanban Board**: 1-click status transitions across application stages.
 - **Database Explorer & Cleanup**: Browse tables, execute SQL queries, and purge test data.
+- **Profile & Skills Editor**: Field-by-field helper text showing live `config.yaml` values, with quick keyword addition controls.
 
 ---
 
 ## ⚡ Daily Workflow Quick Start
 
 ```powershell
-# 0. Launch Interactive Web Console & CLI Cheat Sheet (Recommended)
+# 0. Setup local DB and configuration (optionally opens 1-click Chrome bookmarklet setup page)
+python -m job_agent setup --open-bookmarklet
+
+# 1. Launch Interactive Web Console & CLI Cheat Sheet (Recommended)
 python -m job_agent web
 
-# 1. Open tailored search query links for top 10 USA platforms (posted in last 1-2 weeks)
+# 2. Open tailored search query links for top 10 USA platforms (posted in last 1-2 weeks)
 python -m job_agent search-links --open --browser system
 
-# 2. Fetch jobs directly from platforms (<10 jobs per platform, posted in last 1-2 weeks)
+# 3. Fetch jobs directly from platforms (<10 jobs per platform, posted in last 1-2 weeks)
 python -m job_agent fetch-jobs --platforms dice,ziprecruiter,indeed,linkedin,glassdoor --limit 9
 
-# 3. Automated URL job import
+# 4. Automated URL job import
 python -m job_agent add-job --url "https://www.linkedin.com/jobs/view/123456"
 
-# 4. Sync job alert emails from Gmail (received in last 14 days)
+# 5. Sync job alert emails from Gmail (received in last 14 days)
 python -m job_agent sync-gmail
 
-# 5. Re-score all saved jobs against your master resume text and candidate profile
+# 6. Re-score all saved jobs against your master resume text and candidate profile
 python -m job_agent analyze
 
-# 6. List high-matching opportunities
+# 7. List high-matching opportunities
 python -m job_agent jobs --min-score 60
 
-# 7. Generate ATS tailored DOCX resume draft into _drafts/ folder
+# 8. Generate ATS tailored DOCX resume draft into _drafts/ folder
 python -m job_agent tailor <job_id>
 
-# 8. Explicitly approve and promote draft into finalized jobapplied folder
+# 9. Explicitly approve and promote draft into finalized jobapplied folder
 python -m job_agent approve-draft <job_id>
 
-# 9. Mark as applied after manual submission on job platform
+# 10. Mark as applied after manual submission on job platform
 python -m job_agent mark-applied <job_id> --confirm
 
-# 10. View search pipeline dashboard & follow-ups
+# 11. View search pipeline dashboard & follow-ups
 python -m job_agent dashboard
 python -m job_agent follow-ups
 ```
@@ -68,7 +73,7 @@ python -m job_agent follow-ups
 ### 1. Setup & Environment
 | Command | Description | Default / Options |
 | :--- | :--- | :--- |
-| `python -m job_agent setup` | Initialize local runtime folders, SQLite DB schema, verify config and OAuth credentials | `--no-copy-env` |
+| `python -m job_agent setup` | Initialize local runtime folders, SQLite DB schema, verify config and OAuth credentials | `--no-copy-env`, `--open-bookmarklet` |
 | `python -m job_agent profile` | Display loaded candidate profile, target titles, skills, and multi-resumes | None |
 | `python -m job_agent statuses` | List supported application lifecycle statuses | None |
 

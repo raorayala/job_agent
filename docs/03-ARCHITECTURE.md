@@ -67,14 +67,15 @@ job-search-agent/
 | Component | Responsibility |
 |-----------|----------------|
 | `config` | Load `.env`, YAML, resolve paths, build `CandidateProfile` / `Settings` |
-| `database` | SQLite engine, `JobRecord`, `ProcessedEmail`, queries |
+| `database` | SQLite engine, `JobRecord` with B-Tree indexes, `ProcessedEmail`, `ActivityLogRecord`, queries |
 | `gmail_client` | OAuth token lifecycle, message list/get, body extraction |
-| `email_parser` | HTML/text → `ParsedJob` list |
-| `job_normalizer` | Canonical URL/company/title/location helpers |
-| `matcher` | Weighted scoring + `MatchExplanation` |
-| `resume_tailor` | Fact-preserving DOCX generation |
+| `email_parser` | HTML/text → `ParsedJob` list (multi-job digests) |
+| `job_normalizer` | Canonical URL/company/title/location helpers, LRU cached similarity |
+| `matcher` | Weighted scoring + `MatchExplanation`, Flyweight compiled regex caching |
+| `resume_tailor` | Fact-preserving ATS DOCX draft & cover letter generation |
 | `document_exporter` | Folder/filename conventions |
-| `application_tracker` | Status transitions; Applied gate |
+| `application_tracker` | Status transitions, explicit approval gate |
+| `web_dashboard` | Web Application Console, Kanban board, Database Explorer, progress bar, CLI runner |
 | `cli` | User-facing commands and Rich output |
 
 ## 5. Technology choices
@@ -83,13 +84,26 @@ job-search-agent/
 |---------|--------|-----------|
 | Language | Python 3.11+ | Typing, ecosystem, user constraint |
 | CLI | Typer + Rich | Fast UX, typed options |
-| DB | SQLite + SQLAlchemy 2 | Local, zero ops, testable |
+| DB | SQLite + SQLAlchemy 2 | Local, zero ops, B-Tree indexes |
 | Email | Gmail API + google-auth-oauthlib | Official, readonly scope |
 | HTML | BeautifulSoup + lxml | Robust malformed HTML handling |
 | Resume | python-docx | DOCX read/write without Office COM |
 | Config | YAML + python-dotenv | Human-editable profile + secrets split |
-| Optional UI | Streamlit | Lightweight local dashboard |
-| Optional LLM | Ollama / future APIs | Local-first cost control |
+| UI | Embedded Web Console | Private local HTTP server on `localhost:8000` |
+| Optional LLM | Ollama / local models | Local-first cost control |
+
+## 6. Software Design Patterns Implemented
+
+1. **Flyweight Pattern**:
+   - `functools.lru_cache` memoizes compiled regular expressions (`_compile_word_pattern`, `_get_skill_regex`) and string distance ratios (`calculate_similarity`).
+2. **Strategy & Adapter Pattern**:
+   - Modular platform search adapters (`fetch_dice_jobs`, `fetch_ziprecruiter_jobs`, `import_job_from_url`) behind uniform interface.
+3. **Repository & Data Mapper Pattern**:
+   - Abracts database queries and utilizes composite B-Tree indexes (`ix_jobs_company_title_norm`, `ix_jobs_status_score`, `ix_jobs_date_discovered`, `ix_jobs_gmail_msg_id`).
+4. **Lazy Loading / Deferred Execution**:
+   - Deferred master resume DOCX text extraction and draft document creation.
+5. **Factory & Singleton Connection**:
+   - Centralized database engine and settings initialization.
 
 ## 6. Configuration layers
 
