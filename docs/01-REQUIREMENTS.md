@@ -59,11 +59,17 @@ Configurable fields:
 ### 5.2 Discovery & Ingestion
 
 - **Gmail OAuth 2.0**: Least-privilege read-only access (`gmail.readonly`) to sync job alert emails (filtered to last 14 days).
-- **Direct Platform Search (`fetch-jobs`)**: Direct query ingestion from Dice, ZipRecruiter, and other platforms.
-  - **Batch Limit**: Enforces initial run limit of **less than 10 jobs** per platform per run (default: 9).
-  - **Freshness Filter**: Filters strictly for jobs posted within the **last 1 to 2 weeks** (14 days max).
-- **1-Click Chrome Bookmarklet (`serve`)**: Local HTTP endpoint (`http://localhost:8000/capture`) for saving job listings directly from Chrome.
-- **Search Query URLs (`search-links`)**: Generates pre-formatted search URLs for Indeed, Dice, ZipRecruiter, LinkedIn, and Glassdoor with 1–2 week freshness parameters, launching explicitly in Google Chrome.
+- **Direct Platform Search (`fetch-jobs`)**: Query ingestion from selectable USA platforms via web UI checkboxes or CLI.
+  - **Default limit**: **3 jobs per platform** (max 9 via `--limit`).
+  - **Recommended platforms**: Dice, ZipRecruiter, Indeed (most reliable automated fetch).
+  - **Experimental platforms**: LinkedIn, Glassdoor, Monster, etc. (may return zero when sites block bots).
+  - **Freshness filter**: Jobs posted within the **last 14 days**.
+  - **Per-platform reports**: Web UI shows success/empty/error for each selected site.
+- **Demo seed (`seed-demo`)**: Insert sample jobs for smoke testing without network.
+- **1-Click Chrome Bookmarklet (`web` / `/capture`)**: Local HTTP endpoint for saving listings from Chrome while browsing.
+- **Search Query URLs (`search-links`)**: Pre-formatted search URLs with freshness parameters; opens in browser.
+- **URL import (`add-job`, web Import URL modal)**: Single-job import with optional manual field overrides.
+- **Web Console health panel**: Shows DB path, Gmail OAuth status, master resume status, onboarding checklist.
 
 ### 5.3 Job analysis and ranking
 
@@ -122,7 +128,10 @@ CLI commands:
 | `python -m job_agent jobs [--min-score N]` | List tracked jobs |
 | `python -m job_agent tailor <job_id>` | Tailor resume |
 | `python -m job_agent mark-applied <job_id> --confirm` | Record Applied |
-| `python -m job_agent dashboard` | Optional Streamlit UI |
+| `python -m job_agent web` | Launch Web Console on `http://localhost:8000/` |
+| `python -m job_agent seed-demo` | Insert sample jobs for testing |
+| `python -m job_agent fetch-jobs` | Search selected platforms (default 3 jobs each) |
+| `python -m job_agent purge-data --confirm` | Wipe all DB tables |
 
 Dry-run mode required for Gmail sync and resume generation.
 
@@ -144,22 +153,27 @@ ZipRecruiter, Indeed, Glassdoor, Dice, Lensa — configured in `config.yaml` via
 
 ## 8. Acceptance criteria (product-level)
 
-- [ ] User can configure profile without code changes
-- [ ] Gmail sync works with readonly OAuth and does not reprocess known message IDs
-- [ ] Jobs are scored with explainable output
-- [ ] Tailored resumes do not invent facts
-- [ ] Duplicates are detected / warned
-- [ ] Applied requires `--confirm`
-- [ ] Artifacts land under Desktop/Jobs Applied
-- [ ] System runs with `LLM_PROVIDER=none`
+- [x] User can configure profile without code changes
+- [x] Gmail sync works with readonly OAuth and does not reprocess known message IDs
+- [x] Jobs are scored with explainable output
+- [x] Tailored resumes do not invent facts
+- [x] Duplicates are detected / warned
+- [x] Applied requires `--confirm`
+- [x] Artifacts land under Desktop/Jobs Applied
+- [x] System runs with `LLM_PROVIDER=none`
+- [x] Web Console provides platform search, health panel, demo seed, and job edit
+- [x] 53 automated tests pass
 
-## 9. Current fulfillment status
+## 9. Current fulfillment status (v0.1.0)
 
-| Area | Status (v0.1.0) |
-|------|-----------------|
-| Project packaging, config, SQLite schema, CLI skeleton | Done (Milestone 1) |
-| Profile loading from YAML | Done (basic) |
-| Master-resume ingestion | Planned (Milestone 2) |
-| Gmail OAuth sync | Planned (Milestone 3) |
-| Email parsing / matching / tailoring | Planned (Milestones 4–7) |
-| Streamlit dashboard | Optional (Milestone 8) |
+| Area | Status |
+|------|--------|
+| Project packaging, config, SQLite schema, CLI | **Done** |
+| Profile loading from YAML + web Profile Editor | **Done** |
+| Master-resume DOCX ingestion | **Done** |
+| Gmail OAuth sync | **Done** |
+| Email parsing, matching, tailoring | **Done** |
+| Web Application Console (not Streamlit) | **Done** |
+| Top 10 platform adapters with selectable checkboxes | **Done** |
+| System health, demo seed, job edit, auto-analyze | **Done** |
+| 53 automated tests | **Done** |

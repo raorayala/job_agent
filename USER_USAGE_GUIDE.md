@@ -18,86 +18,98 @@ Or run setup and CLI commands in your terminal:
 # 0. First-time setup (optionally opens 1-click Chrome bookmarklet page)
 python -m job_agent setup --open-bookmarklet
 
-# 1. Start Web Console & CLI Runner on http://localhost:8000/
+# 1. Start Web Console on http://localhost:8000/
 python -m job_agent web
 
-# 2. Open automated search query links for top 10 USA platforms (posted in last 1-2 weeks)
+# 2. (Optional) Load demo jobs for smoke testing without network
+python -m job_agent seed-demo
+
+# 3. Open automated search query links for top 10 USA platforms (posted in last 14 days)
 python -m job_agent search-links --open --browser system
 
-# 3. Direct search and fetch from top 10 platforms (<10 jobs per platform, posted in last 1-2 weeks)
-python -m job_agent fetch-jobs --platforms dice,ziprecruiter,indeed,linkedin,glassdoor --limit 9
+# 4. Direct search and fetch from platforms (default 3 jobs per platform, max 9 via --limit)
+python -m job_agent fetch-jobs --platforms dice,ziprecruiter,indeed --limit 3
 
-# 4. Automated job import from URL
+# 5. Automated job import from URL
 python -m job_agent add-job --url "https://www.linkedin.com/jobs/view/123456"
 
-# 5. Sync job alert emails from Gmail (received in last 14 days)
+# 6. Sync job alert emails from Gmail (received in last 14 days)
 python -m job_agent sync-gmail
 
-# 6. Re-score all jobs against your master resume text and profile
+# 7. Re-score all jobs against your master resume text and profile
 python -m job_agent analyze
 
-# 7. List high-matching opportunities
-python -m job_agent jobs --min-score 60
+# 8. List high-matching opportunities
+python -m job_agent jobs --min-score 65
 
-# 8. Generate ATS tailored DOCX resume draft into _drafts/ folder
+# 9. Generate ATS tailored DOCX resume draft into _drafts/ folder
 python -m job_agent tailor <job_id>
 
-# 9. Explicitly approve and promote draft into finalized jobapplied folder
+# 10. Explicitly approve and promote draft into finalized jobapplied folder
 python -m job_agent approve-draft <job_id>
 
-# 10. Mark as applied after manual submission
+# 11. Mark as applied after manual submission
 python -m job_agent mark-applied <job_id> --confirm
 
-# 11. View search pipeline dashboard & follow-ups
+# 12. View search pipeline dashboard & follow-ups
 python -m job_agent dashboard
 python -m job_agent follow-ups
 ```
 
 ---
 
-## 🖥️ How to Use and Manage the Web Application Console
+## How to Use the Web Application Console
 
-The Web Application Console (`http://localhost:8000/`) gives you complete, 100% private visual control over your job search pipeline.
+The Web Application Console (`http://localhost:8000/`) runs on a local ThreadingHTTPServer (not Streamlit) and gives you complete, 100% private visual control over your job search pipeline.
 
-### Key Interactive Features:
+### Key Interactive Features
 
-1. **Global Event Progress Bar**:
+1. **Global Event Progress Bar**
    - Every user click and background operation (platform search, URL import, draft generation, approval, profile saving, database cleanup, CLI execution) triggers a top-level animated progress bar (`#global-progress-wrapper`) displaying real-time status messages and completion percentage.
 
-2. **Dashboard Tab (Pipeline Metrics & Live Activity Feed)**:
-   - View metric cards: **Total Discovered Jobs**, **Jobs Requiring Review**, **Drafts Awaiting Approval**, and **Applications In Progress**.
-   - **Install Bookmarklet** card with link to `/capture` and browser-local install status (always available — not limited to first-time setup).
-   - High score opportunities table displaying score badges, role titles, company names, platforms, and review/draft actions.
+2. **Dashboard Tab (System Health, Metrics & Live Activity Feed)**
+   - **System Health panel**: Database path, Gmail OAuth status, master resume status, and onboarding checklist (`system_health.py`).
+   - **Load Demo Jobs** button: Inserts sample jobs via `demo_data.py` for smoke testing without network.
+   - Metric cards: **Total Discovered Jobs**, **Jobs Requiring Review**, **Drafts Awaiting Approval**, and **Applications In Progress**.
+   - **High-Match widget**: Jobs with score ≥65 AND status Saved or Reviewing.
+   - **Recently Discovered Jobs** table: Shows all imported jobs with scores (not filtered to ≥65).
+   - **Install Bookmarklet** card with link to `/capture` and browser-local install status.
    - Live Activity Feed tracking discovery, import, analysis, draft generation, and approval events.
 
-3. **Job Discovery Tab (Top 10 USA Platforms)**:
-   - Platform cards for Indeed, LinkedIn, Glassdoor, Monster, ZipRecruiter, CareerBuilder, SimplyHired, Dice, Wellfound, and Google Jobs.
+3. **Job Discovery Tab (Top 10 USA Platforms)**
+   - Platform checkboxes with **recommended** (dice, ziprecruiter, indeed) and **experimental** tier badges.
    - Filter jobs by Title, Location, Work Mode (`remote` / `hybrid` / `on-site`), Posting Age (within 14 days), and Salary.
-   - Click **"Find Jobs Now"** to run automated discovery across top platforms (<10 jobs per platform).
+   - Click **Find Jobs Now** to run automated discovery (default **3 jobs per platform**, max 9).
+   - **Last Platform Search Results** table shows per-platform success/empty/error status after each search.
+   - Auto-analyze runs after a successful platform search (`job_analysis.py`).
 
-4. **Automated URL Job Import Modal**:
+4. **Automated URL Job Import Modal**
    - Click **Import URL** in the header or Dashboard to open the URL import modal.
-   - Paste any job page URL (from LinkedIn, Indeed, Glassdoor, Monster, Dice, etc.) to automatically fetch and parse title, company, location, and description.
+   - Paste any job page URL to automatically fetch and parse title, company, location, and description.
 
-5. **Resume Review & Approval Screen (3-Way Version View)**:
+5. **Job Edit Modal**
+   - Edit job title, company, location, description, and notes from the web UI.
+   - Changes persist via `/api/jobs/update` and trigger automatic re-scoring.
+
+6. **Resume Review & Approval Screen (3-Way Version View)**
    - Clearly distinguishes:
      1. **Master Resume**: Source of truth (`master_resume.docx`)
      2. **Draft Resume**: ATS tailored version in `_drafts/` awaiting review
      3. **Finalized Resume**: Promoted upon explicit approval into `~/Desktop/Jobs Applied/<Company>/<Job Title>/`
    - Inspect ATS Keyword Alignment & Change Summary / Diff view.
-   - Click **"Approve & Finalize Resume"** to trigger confirmation modal and promote draft to `jobapplied` folder.
+   - Click **Approve & Finalize Resume** to trigger confirmation modal and promote draft to `jobapplied` folder.
 
-6. **Kanban Application Board Tab**:
-   - View jobs organized by lifecycle columns: `Imported`, `Analyzed`, `Resume draft ready`, `Awaiting review`, `Approved`, `Applied`, `Interviewing`, `Offer`, `Rejected`.
+7. **Kanban Application Board Tab**
+   - View jobs organized by lifecycle columns: `Saved`, `Reviewing`, `Ready to apply`, `Applied`, `Interviewing`, `Offer`, `Rejected`.
    - Change a job's status with 1 click using the status dropdown.
 
-7. **Database Explorer & Cleanup Tab**:
+8. **Database Explorer & Cleanup Tab**
    - Browse SQLite tables (`jobs`, `activity_logs`, `contacts`, `interviews`, `application_answers`, `processed_emails`).
    - Execute SQL queries directly or run automated cleanup routines (duplicates, stale jobs, purge test data).
 
-8. **Profile & Skills Editor Tab (`config.yaml`)**:
+9. **Profile & Skills Editor Tab (`config.yaml`)**
    - Optional profile configuration with field-by-field helper labels displaying live `Config.yaml current: ...` text underneath every input element.
-   - Quick Add input fields and preset buttons for salary range (`$100k`–`$250k`) and work modes.
+   - Quick Add input fields and preset buttons for salary range and work modes.
    - Click **Save Profile Configuration** to persist changes directly to `config.yaml`.
 
 ---
@@ -110,15 +122,17 @@ Install anytime from the Web Dashboard — click **Install Bookmarklet** in the 
 2. In the dashboard, click **Install Bookmarklet** (header or Dashboard card).
 3. On the `/capture` page: show Chrome Bookmarks Bar (`Ctrl + Shift + B`), add a bookmark named **Capture Job**, and paste the snippet (or click **Copy Bookmarklet Code**).
 4. Click **Send Test Capture Payload** to confirm the server endpoint works.
-5. Click **Mark as Installed** so the dashboard remembers setup in this browser (local tracking only — Chrome cannot expose bookmark bar state to web apps).
-6. While browsing job sites, click **`Capture Job`** on Chrome's bar (server must be running).
+5. Click **Mark as Installed** so the dashboard remembers setup in this browser (localStorage — Chrome cannot expose bookmark bar state to web apps).
+6. While browsing job sites, click **Capture Job** on Chrome's bar (server must be running).
 
 Alternative during first-time setup:
+
 ```powershell
 python -m job_agent setup --open-bookmarklet
 ```
 
 Bookmarklet JavaScript (also shown on `/capture`):
+
 ```javascript
 javascript:(function(){
   const title = document.querySelector('h1')?.innerText || document.title;
@@ -139,7 +153,7 @@ javascript:(function(){
 
 ---
 
-## 🛠️ Maintenance & Backup Procedures
+## Maintenance & Backup Procedures
 
 - **Local Backup Archive**:
   ```powershell
@@ -157,14 +171,15 @@ javascript:(function(){
   python -m job_agent delete-job <job_id> --confirm
   ```
 
-- **Purge All Database Records**:
+- **Purge All Database Records** (all 6 tables: jobs, activity_logs, contacts, interviews, application_answers, processed_emails):
   ```powershell
   python -m job_agent purge-data --confirm
   ```
+  Alternative: `python scripts/purge_database.py --confirm`
 
 ---
 
-## 🔐 Security & Privacy Safeguards
+## Security & Privacy Safeguards
 
 1. **Air-Gapped Local Storage**: All databases, tokens, resumes, cover letters, contacts, and logs remain 100% on your computer.
 2. **Gmail Read-Only Scope**: Uses `gmail.readonly` OAuth 2.0 scope only; cannot send or modify emails.
@@ -175,6 +190,10 @@ javascript:(function(){
 
 ---
 
-## 📖 Complete Command Reference
+## Complete Command Reference
 
 For a complete reference of all available CLI commands, options, and flags, see the **[CLI Command Cheat Sheet](CLI_CHEAT_SHEET.md)**.
+
+For smoke testing and troubleshooting, see **[docs/11-TESTING-PLAYBOOK.md](docs/11-TESTING-PLAYBOOK.md)**.
+
+For Web Console HTTP API endpoints, see **[docs/12-WEB-CONSOLE-API.md](docs/12-WEB-CONSOLE-API.md)**.

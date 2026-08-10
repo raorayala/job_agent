@@ -18,6 +18,8 @@ See the **[docs/](docs/README.md)** folder for the complete project document set
 | [Operations](docs/08-OPERATIONS-DEPLOYMENT.md) | Local production install & ops |
 | [Roadmap](docs/09-ROADMAP.md) | Milestones and future work |
 | [User guide](docs/10-USER-GUIDE.md) | Day-to-day usage guide |
+| [Testing playbook](docs/11-TESTING-PLAYBOOK.md) | Smoke tests, demo seed, troubleshooting |
+| [Web Console API](docs/12-WEB-CONSOLE-API.md) | Local HTTP API reference |
 | [CLI Cheat Sheet](CLI_CHEAT_SHEET.md) | Quick CLI reference |
 
 ## Review-First Architecture & Safety Workflow
@@ -40,7 +42,11 @@ Job Discovery (Top 10 USA Platforms / Gmail / URL Import)
 
 - **Global Event Progress Bar**: Real-time progress feedback (`#global-progress-wrapper`) across all Web Console actions (platform search, URL import, draft generation, approval, profile saves, database cleanup, CLI execution).
 - **Profile & Skills Editor Previews**: Optional profile configuration displaying live `config.yaml current: ...` helper text underneath every form input field, with quick keyword addition controls.
-- **Top 10 USA Job Platforms**: Automated discovery and query link generation for Indeed, LinkedIn, Glassdoor, Monster, ZipRecruiter, CareerBuilder, SimplyHired, Dice, Wellfound, and Google Jobs (<10 jobs per platform, <14 days old).
+- **Top 10 USA Job Platforms**: Automated discovery and query link generation for Indeed, LinkedIn, Glassdoor, Monster, ZipRecruiter, CareerBuilder, SimplyHired, Dice, Wellfound, and Google Jobs (default **3 jobs per platform**, max 9 via `--limit`, <14 days old). Recommended: dice, ziprecruiter, indeed; others are experimental.
+- **System Health & Onboarding**: Dashboard health panel (`system_health.py`) shows DB, Gmail OAuth, master resume status, and onboarding checklist.
+- **Demo Seed**: `seed-demo` command and **Load Demo Jobs** button insert sample jobs for smoke testing without network.
+- **Auto-Analyze**: Platform search automatically re-scores imported jobs (`job_analysis.py`).
+- **Job Edit Modal**: Edit job fields via web UI with automatic re-scoring (`/api/jobs/update`).
 - **Software Design Patterns**: Implements Flyweight (`lru_cache` regex compilation & string distance caching), Strategy & Adapter (platform search adapters), Repository & Data Mapper (SQLAlchemy B-Tree indexes), Lazy Loading (deferred DOCX parsing), and Factory/Singleton connection patterns.
 - **Strict Human Approval**: Resumes are generated into `_drafts/` first. Master resumes and finalized applied resumes are **never overwritten** without explicit user approval.
 - **Structured Console Logging**: Python `logger.info` integration logs all web server HTTP requests and API endpoints directly to standard output.
@@ -78,11 +84,11 @@ Launch the Web Console to manage applications, search top platforms, review resu
 ```powershell
 python -m job_agent web
 ```
-This launches `http://localhost:8000/` featuring:
+This launches `http://localhost:8000/` (ThreadingHTTPServer — not Streamlit) featuring:
 - **Global Progress Bar**: Real-time event feedback and status percentages for all actions.
 - **Install Bookmarklet**: Header button and Dashboard card link to `/capture` — install or re-install the 1-click Chrome bookmarklet anytime (requires `python -m job_agent web` running). Click **Mark as Installed** on `/capture` to track setup in this browser (localStorage).
-- **Dashboard**: Summary cards for New Jobs, Jobs Requiring Review, Drafts Awaiting Approval, Applications in Progress, plus live Activity Feed.
-- **Top 10 Job Discovery Page**: Platform cards for all top 10 USA platforms, search query links (<14 days old), and "Find Jobs Now".
+- **Dashboard**: System health panel, onboarding checklist, summary cards, **High-Match** widget (score ≥65 AND status Saved/Reviewing), **Recently Discovered Jobs** table (all scores), and live Activity Feed.
+- **Top 10 Job Discovery Page**: Platform checkboxes with recommended/experimental tier badges, **Find Jobs Now** (default 3 jobs per platform), and **Last Platform Search Results** per-platform report table.
 - **Automated URL Job Import**: Paste a job page URL to automatically extract title, company, location, and description.
 - **Resume Review & Approval Page**: Compare Master Resume vs Tailored Draft vs Finalized Resume, inspect change summary, preview draft, and explicitly click "Approve & Finalize".
 - **Visual Kanban Board**: Drag/drop and 1-click status transitions.
@@ -96,7 +102,8 @@ For a full reference, see the **[CLI Command Cheat Sheet](CLI_CHEAT_SHEET.md)** 
 ```powershell
 python -m job_agent web                                  # Launch Web Application Console
 python -m job_agent search-links --open --browser system # Launch top 10 search URLs in default browser
-python -m job_agent fetch-jobs --platforms dice,ziprecruiter # Search platforms (<10 jobs, <14 days old)
+python -m job_agent fetch-jobs --platforms dice,ziprecruiter,indeed # Search platforms (3 jobs/platform default, max 9)
+python -m job_agent seed-demo                              # Insert sample jobs for smoke testing
 python -m job_agent add-job --url "https://..."          # Automated URL job import
 python -m job_agent sync-gmail                          # Fetch job alert emails from Gmail
 python -m job_agent analyze                             # Re-score stored jobs against profile & DOCX resume
@@ -135,7 +142,7 @@ Set environment variables in `.env`:
 
 ## Tests
 
-Run the full test suite (46 passing tests):
+Run the full test suite (53 passing tests):
 
 ```powershell
 pytest

@@ -78,9 +78,15 @@ Recommendation: keep `LLM_PROVIDER=none` unless you accept third-party processin
 
 - Backup `data/jobs.db` and `Desktop/Jobs Applied` if you need history retention
 - To revoke Gmail access: Google Account → Security → Third-party access → remove the app; delete local `token.json`
-- To wipe local app data: delete `data/jobs.db`, `token.json`, and generated resume folders (keep master resume if desired)
+- To wipe local app data: `python -m job_agent purge-data --confirm` (all six SQLite tables) or delete `data/jobs.db`, `token.json`, and generated resume folders manually (keep master resume if desired)
 
-## 9. Compliance notes
+## 9. Web Console (local HTTP)
+
+- Binds to `127.0.0.1` only (`http://localhost:8000/`) — not exposed to the network
+- Bookmarklet install status (`Mark as Installed`) is stored in browser `localStorage` only; the server cannot verify Chrome bookmark bar state
+- No authentication layer on the Web Console — intended for single-user local use on a trusted workstation
+
+## 10. Compliance notes
 
 This is a personal productivity tool. Users are responsible for complying with:
 

@@ -138,3 +138,18 @@ Stored as display strings matching `ApplicationStatus`:
 - Child table `job_extractions` if one email yields many jobs and unique `gmail_message_id` on `jobs` is too strict
 - `application_events` append-only log for status transitions
 - Full-text index on descriptions for local search
+
+## 10. Data purge
+
+`python -m job_agent purge-data --confirm` (or `python scripts/purge_database.py --confirm`) deletes **all records** from all six tables:
+
+| Table | Contents |
+|-------|----------|
+| `jobs` | Discovered and tracked opportunities |
+| `activity_logs` | Audit feed (discovery, import, analysis, approval events) |
+| `contacts` | Networking contacts |
+| `interviews` | Interview records |
+| `application_answers` | Reusable Q&A library |
+| `processed_emails` | Gmail sync cursor |
+
+SQLite auto-increment sequences are reset. This does **not** delete files on disk (resumes, backups, `.env`).

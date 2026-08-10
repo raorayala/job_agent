@@ -90,10 +90,10 @@ CLI_COMMANDS_METADATA = [
                 "id": "fetch-jobs",
                 "name": "fetch-jobs",
                 "cmd": "fetch-jobs",
-                "description": "Search job platforms (Dice, ZipRecruiter) directly (<10 jobs per platform, <1-2 weeks old).",
+                "description": "Search job platforms directly (default 3 jobs per platform, max 9, last 14 days). Recommended: dice, ziprecruiter, indeed.",
                 "params": [
-                    {"name": "platforms", "flag": "--platforms", "type": "text", "default": "dice,ziprecruiter", "label": "Platforms (dice,ziprecruiter)"},
-                    {"name": "limit", "flag": "--limit", "type": "number", "default": 9, "label": "Max jobs per platform (<10 default)"}
+                    {"name": "platforms", "flag": "--platforms", "type": "text", "default": "dice,ziprecruiter,indeed", "label": "Platforms (comma-separated)"},
+                    {"name": "limit", "flag": "--limit", "type": "number", "default": 3, "label": "Max jobs per platform (default 3, max 9)"}
                 ]
             },
             {

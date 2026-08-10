@@ -10,27 +10,35 @@
 │  config.yaml    │
 │  .env           │     write artifacts     ┌──────────────────────┐
 │  SQLite DB      │ ──────────────────────► │ Desktop/Jobs Applied │
-│  CLI / optional │                         └──────────────────────┘
-│  Streamlit      │
+│  CLI + Web      │                         └──────────────────────┘
+│  Console :8000  │
 └────────┬────────┘
          │ optional
          ▼
    Local Ollama / LLM API
 ```
 
-The agent is a **single-user desktop tool**. There is no application server and no multi-tenant backend in v1.
+The agent is a **single-user desktop tool**. The Web Console is an embedded local HTTP server (`ThreadingHTTPServer` on `127.0.0.1:8000`) — not Streamlit, not a cloud multi-tenant backend.
 
 ## 2. Logical pipeline
+
+```text
+Discovery (platform fetch / Gmail / URL import / bookmarklet)
+    → job_normalizer (URL/text normalize + dedupe signals)
+    → matcher (explainable score vs CandidateProfile + resume facts)
+    → job_analysis (batch re-score after platform search)
+    → application_tracker / database (persist Jobs Applied)
+    → resume_tailor + document_exporter (truthful DOCX under Desktop)
+    → Web Console or CLI (human review, mark-applied --confirm)
+```
+
+Gmail-specific path:
 
 ```text
 Gmail messages
     → gmail_client (auth, list, fetch, incremental IDs)
     → email_parser (platform-aware extraction)
-    → job_normalizer (URL/text normalize + dedupe signals)
-    → matcher (explainable score vs CandidateProfile + resume facts)
-    → application_tracker / database (persist Jobs Applied)
-    → resume_tailor + document_exporter (truthful DOCX under Desktop)
-    → CLI (human review, mark-applied --confirm)
+    → (joins main pipeline at job_normalizer)
 ```
 
 ## 3. Package layout
@@ -53,13 +61,27 @@ job-search-agent/
 │   ├── job_normalizer.py
 │   ├── matcher.py
 │   ├── resume_tailor.py
+│   ├── resume_parser.py        # Master-resume DOCX text extraction
 │   ├── document_exporter.py
 │   ├── application_tracker.py
+│   ├── platform_fetcher.py     # Top 10 platform adapters + URL import
+│   ├── browser_capture.py      # HTTP server + bookmarklet endpoint
+│   ├── web_dashboard.py        # Web Console UI + API handlers
+│   ├── system_health.py        # Dashboard health panel + onboarding
+│   ├── demo_data.py            # seed-demo sample jobs
+│   ├── job_analysis.py         # Batch re-analyze after search
+│   ├── backup_service.py       # Backup/restore/purge
+│   ├── cleanup_service.py      # Duplicate/stale cleanup + full purge
+│   ├── contact_service.py
+│   ├── interview_service.py
+│   ├── answer_service.py
+│   ├── report_service.py
+│   ├── notification_service.py
 │   └── services/               # higher-level orchestration (future)
 ├── tests/
 ├── data/                       # local DB (gitignored contents)
 ├── templates/                  # optional templates
-└── scripts/                    # e.g. dev_setup.ps1
+└── scripts/                    # dev_setup.ps1, purge_database.py, etc.
 ```
 
 ## 4. Component responsibilities
@@ -75,7 +97,12 @@ job-search-agent/
 | `resume_tailor` | Fact-preserving ATS DOCX draft & cover letter generation |
 | `document_exporter` | Folder/filename conventions |
 | `application_tracker` | Status transitions, explicit approval gate |
-| `web_dashboard` | Web Application Console, Kanban board, Database Explorer, progress bar, CLI runner |
+| `platform_fetcher` | Direct search adapters for top 10 USA platforms; URL auto-import; per-platform reports |
+| `browser_capture` | ThreadingHTTPServer on `:8000`, CORS, bookmarklet POST `/capture` |
+| `web_dashboard` | Web Console HTML/JS, Kanban, Database Explorer, progress bar, CLI runner, REST API |
+| `system_health` | DB/Gmail/resume readiness, onboarding checklist for dashboard |
+| `demo_data` | Insert sample jobs for smoke testing (`seed-demo`) |
+| `job_analysis` | Batch re-score all jobs; auto-triggered after platform search |
 | `cli` | User-facing commands and Rich output |
 
 ## 5. Technology choices
@@ -89,49 +116,53 @@ job-search-agent/
 | HTML | BeautifulSoup + lxml | Robust malformed HTML handling |
 | Resume | python-docx | DOCX read/write without Office COM |
 | Config | YAML + python-dotenv | Human-editable profile + secrets split |
-| UI | Embedded Web Console | Private local HTTP server on `localhost:8000` |
+| UI | Embedded Web Console (ThreadingHTTPServer) | Private local HTTP on `localhost:8000` |
 | Optional LLM | Ollama / local models | Local-first cost control |
 
 ## 6. Software Design Patterns Implemented
 
 1. **Flyweight Pattern**:
-   - `functools.lru_cache` memoizes compiled regular expressions (`_compile_word_pattern`, `_get_skill_regex`) and string distance ratios (`calculate_similarity`).
+   - `functools.lru_cache` memoizes compiled regular expressions and string distance ratios.
 2. **Strategy & Adapter Pattern**:
-   - Modular platform search adapters (`fetch_dice_jobs`, `fetch_ziprecruiter_jobs`, `import_job_from_url`) behind uniform interface.
+   - Modular platform search adapters behind uniform interface in `platform_fetcher.py`.
 3. **Repository & Data Mapper Pattern**:
-   - Abracts database queries and utilizes composite B-Tree indexes (`ix_jobs_company_title_norm`, `ix_jobs_status_score`, `ix_jobs_date_discovered`, `ix_jobs_gmail_msg_id`).
+   - Abstracts database queries and utilizes composite B-Tree indexes.
 4. **Lazy Loading / Deferred Execution**:
    - Deferred master resume DOCX text extraction and draft document creation.
 5. **Factory & Singleton Connection**:
    - Centralized database engine and settings initialization.
 
-## 6. Configuration layers
+## 7. Configuration layers
 
 1. **Committed defaults:** `config.yaml` (platforms, profile template, weights)
 2. **Local secrets/paths:** `.env` (resume path, OAuth paths, DB path, LLM)
 3. **Runtime OAuth artifacts:** `credentials.json`, `token.json`
 4. **Derived state:** `data/jobs.db`, Desktop exports
 
-## 7. Trust boundaries
+## 8. Trust boundaries
 
 | Boundary | Rule |
 |----------|------|
 | Network → Gmail | Only via official API with user consent |
+| Network → job platforms | Read-only HTML fetch for recommended platforms; experimental may fail |
 | Network → LLM | Optional; disabled by default |
 | Disk → git | Secrets, DB, tokens, personal resumes ignored |
 | CLI → Applied status | Requires explicit `--confirm` |
+| Web Console | Binds to `127.0.0.1` only |
 
-## 8. Extensibility points
+## 9. Extensibility points
 
-- Add platforms in `config.yaml` (`sender_domains`, `link_patterns`)
+- Add platforms in `config.yaml` (`sender_domains`, `link_patterns`) and `platform_fetcher.py`
 - Swap matcher backend (rule → hybrid LLM) behind `score_job()`
 - Add exporters (PDF) via optional `pdf` extra
 - Add orchestration in `services/` without changing CLI surface
 
-## 9. Deployment topology (v1)
+## 10. Deployment topology (v1)
 
 Single machine:
 
 - Developer / job-seeker workstation (Windows supported; POSIX-compatible paths via `pathlib`)
 - No containers required for v1 (optional later)
 - Optional Windows Task Scheduler for periodic `sync-gmail` + `analyze`
+
+See [12 — Web Console API](12-WEB-CONSOLE-API.md) for HTTP endpoints.

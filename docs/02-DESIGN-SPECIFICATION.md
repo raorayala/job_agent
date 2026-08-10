@@ -20,14 +20,22 @@
 5. Create Google OAuth Desktop credentials → `credentials.json`.
 6. Run `python -m job_agent setup` and `profile`.
 
-### Journey B — Daily scan and review
+### Journey B — Daily scan and review (CLI or Web)
 
-1. `sync-gmail` (optionally `--dry-run`).
-2. `analyze` to score new jobs.
-3. `jobs --min-score 70` to review shortlist.
-4. Open job URL manually; apply on the employer/platform site if desired.
-5. `tailor <job_id>` to generate ATS resume under Desktop/Jobs Applied.
-6. After applying: `mark-applied <job_id> --confirm`.
+**Web (recommended):**
+1. `python -m job_agent web`
+2. Dashboard → review **System Health** checklist
+3. **Load Demo Jobs** (first time) or **Job Discovery** → select platforms → **Find Jobs Now**
+4. Review **Last Platform Search Results** and **Recently Discovered Jobs**
+5. **Re-Score Jobs** if profile changed
+6. **Resume Review** tab → tailor → approve/reject
+
+**CLI:**
+1. `sync-gmail` (optionally `--dry-run`) or `fetch-jobs --platforms dice,ziprecruiter,indeed --limit 3`
+2. `analyze` to score jobs
+3. `jobs --min-score 70` to review shortlist
+4. Apply manually on employer site
+5. `tailor <job_id>` → `approve-draft <job_id>` → `mark-applied <job_id> --confirm`
 
 ### Journey C — Duplicate / conflict handling
 
@@ -47,7 +55,10 @@
 | `jobs` | Read-only | None |
 | `tailor` | Writes DOCX (+ optional notes) unless dry-run | None; dry-run available |
 | `mark-applied` | Sets status Applied + date_applied | **Requires `--confirm`** |
-| `dashboard` | Local Streamlit process | Optional later |
+| `web` / `serve` | Starts threaded local Web Console on `:8000` | None |
+| `seed-demo` | Inserts 3 sample jobs; optional analyze | None |
+| `fetch-jobs` | Writes jobs from selected platforms (default 3 each) | None |
+| `dashboard` | CLI pipeline summary (mirrors web stats) | None |
 | `statuses` | Read-only | None |
 
 ## 4. Recommendation labels
@@ -106,8 +117,14 @@ LLM may refine summaries or keyword emphasis but **must not** invent resume fact
 | Duplicate job | Warn; set duplicate flags; do not silently overwrite Applied history |
 | mark-applied without `--confirm` | Exit non-zero with refusal message |
 
-## 9. Accessibility / interface roadmap
+## 9. Web Console design (v1 UI)
 
-- **v1:** CLI (Typer + Rich)
-- **v1.x:** Optional Streamlit dashboard for Jobs Applied view
-- **Not planned for v1:** Mobile app, multi-user web portal
+- **Primary UI:** Embedded Web Console at `http://localhost:8000/` (not Streamlit)
+- **Dashboard:** Health panel, onboarding checklist, stat cards, high-match (≥65 + Saved/Reviewing), recently discovered jobs (all scores)
+- **Discovery:** Platform checkboxes (recommended/experimental tier badges), Find Jobs Now (default 3 per platform), per-platform results table, auto-analyze after search
+- **Job edit:** Modal + `/api/jobs/update` with re-scoring
+- **Demo seed:** Load Demo Jobs button + `seed-demo` CLI command
+- **Review-first:** Draft approve/reject before promoting to Jobs Applied folder
+- **Fallback capture:** Bookmarklet + URL import when automated platform fetch returns zero
+
+See [12 — Web Console API](12-WEB-CONSOLE-API.md).

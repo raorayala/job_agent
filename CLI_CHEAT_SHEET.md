@@ -4,7 +4,7 @@ A comprehensive reference guide for all CLI commands, review-first resume approv
 
 ---
 
-## 🌐 Interactive Web Application Dashboard & CLI Runner
+## Interactive Web Application Dashboard & CLI Runner
 
 Instead of running commands manually in your terminal, launch the local **Web Application Console**:
 
@@ -12,13 +12,16 @@ Instead of running commands manually in your terminal, launch the local **Web Ap
 python -m job_agent web
 ```
 
-This opens `http://localhost:8000/` in your browser featuring:
+This opens `http://localhost:8000/` (ThreadingHTTPServer — not Streamlit) featuring:
 - **Global Event Progress Bar**: Real-time animated progress bar (`#global-progress-wrapper`) displaying event status messages and completion percentage for all web actions.
-- **Install Bookmarklet**: Header button and Dashboard card open `/capture` anytime to copy the snippet, test the endpoint, and mark install status in this browser.
-- **Interactive CLI Cheat Sheet**: Form controls and **"▶ Run Command"** buttons for all CLI commands.
+- **System Health Panel**: DB path, Gmail OAuth status, master resume status, onboarding checklist.
+- **Install Bookmarklet**: Header button and Dashboard card open `/capture` anytime to copy the snippet, test the endpoint, and mark install status in this browser (localStorage).
+- **Interactive CLI Cheat Sheet**: Form controls and **Run Command** buttons for all CLI commands.
 - **Live Terminal Console**: Streams command output and server logs directly onto the web page.
-- **Top 10 USA Job Discovery**: Platform cards for Indeed, LinkedIn, Glassdoor, Monster, ZipRecruiter, CareerBuilder, SimplyHired, Dice, Wellfound, and Google Jobs.
+- **Top 10 USA Job Discovery**: Platform checkboxes with recommended/experimental tier badges; **Find Jobs Now** (default 3 jobs per platform); **Last Platform Search Results** table.
+- **Load Demo Jobs**: Dashboard button inserts sample jobs without network.
 - **Automated URL Import Modal**: Paste a job page URL to extract details automatically.
+- **Job Edit Modal**: Edit job fields with automatic re-scoring via `/api/jobs/update`.
 - **Resume Review & Approval Screen**: 3-way view (Master Resume vs Draft Resume vs Finalized Resume) with explicit approval controls.
 - **Visual Kanban Board**: 1-click status transitions across application stages.
 - **Database Explorer & Cleanup**: Browse tables, execute SQL queries, and purge test data.
@@ -26,7 +29,7 @@ This opens `http://localhost:8000/` in your browser featuring:
 
 ---
 
-## ⚡ Daily Workflow Quick Start
+## Daily Workflow Quick Start
 
 ```powershell
 # 0. Setup local DB and configuration (optionally opens 1-click Chrome bookmarklet setup page)
@@ -35,54 +38,57 @@ python -m job_agent setup --open-bookmarklet
 # 1. Launch Interactive Web Console & CLI Cheat Sheet (Recommended)
 python -m job_agent web
 
-# 2. Open tailored search query links for top 10 USA platforms (posted in last 1-2 weeks)
+# 2. (Optional) Load demo jobs for smoke testing
+python -m job_agent seed-demo
+
+# 3. Open tailored search query links for top 10 USA platforms (posted in last 14 days)
 python -m job_agent search-links --open --browser system
 
-# 3. Fetch jobs directly from platforms (<10 jobs per platform, posted in last 1-2 weeks)
-python -m job_agent fetch-jobs --platforms dice,ziprecruiter,indeed,linkedin,glassdoor --limit 9
+# 4. Fetch jobs directly from platforms (default 3 per platform, max 9 via --limit)
+python -m job_agent fetch-jobs --platforms dice,ziprecruiter,indeed --limit 3
 
-# 4. Automated URL job import
+# 5. Automated URL job import
 python -m job_agent add-job --url "https://www.linkedin.com/jobs/view/123456"
 
-# 5. Sync job alert emails from Gmail (received in last 14 days)
+# 6. Sync job alert emails from Gmail (received in last 14 days)
 python -m job_agent sync-gmail
 
-# 6. Re-score all saved jobs against your master resume text and candidate profile
+# 7. Re-score all saved jobs against your master resume text and candidate profile
 python -m job_agent analyze
 
-# 7. List high-matching opportunities
-python -m job_agent jobs --min-score 60
+# 8. List high-matching opportunities
+python -m job_agent jobs --min-score 65
 
-# 8. Generate ATS tailored DOCX resume draft into _drafts/ folder
+# 9. Generate ATS tailored DOCX resume draft into _drafts/ folder
 python -m job_agent tailor <job_id>
 
-# 9. Explicitly approve and promote draft into finalized jobapplied folder
+# 10. Explicitly approve and promote draft into finalized jobapplied folder
 python -m job_agent approve-draft <job_id>
 
-# 10. Mark as applied after manual submission on job platform
+# 11. Mark as applied after manual submission on job platform
 python -m job_agent mark-applied <job_id> --confirm
 
-# 11. View search pipeline dashboard & follow-ups
+# 12. View search pipeline dashboard & follow-ups
 python -m job_agent dashboard
 python -m job_agent follow-ups
 ```
 
 ---
 
-## 🔖 1-Click Chrome Bookmarklet
+## 1-Click Chrome Bookmarklet
 
 | Where | What |
 | :--- | :--- |
 | Dashboard header | **Install Bookmarklet** → `http://localhost:8000/capture` |
 | Dashboard tab | Chrome Bookmarklet card with install status (browser-local) |
-| `/capture` page | Copy snippet, test endpoint, **Mark as Installed** |
+| `/capture` page | Copy snippet, test endpoint, **Mark as Installed** (localStorage) |
 | First-time setup | `python -m job_agent setup --open-bookmarklet` (optional) |
 
 Keep `python -m job_agent web` running while using the bookmark on job sites.
 
 ---
 
-## 📋 Categorized Command Reference
+## Categorized Command Reference
 
 ### 1. Setup & Environment
 | Command | Description | Default / Options |
@@ -90,17 +96,20 @@ Keep `python -m job_agent web` running while using the bookmark on job sites.
 | `python -m job_agent setup` | Initialize local runtime folders, SQLite DB schema, verify config and OAuth credentials | `--no-copy-env`, `--open-bookmarklet` |
 | `python -m job_agent profile` | Display loaded candidate profile, target titles, skills, and multi-resumes | None |
 | `python -m job_agent statuses` | List supported application lifecycle statuses | None |
+| `python -m job_agent seed-demo` | Insert 3 sample jobs for dashboard smoke testing | `--analyze/--no-analyze` |
 
 ---
 
 ### 2. Job Discovery & Ingestion
 | Command | Description | Key Parameters |
 | :--- | :--- | :--- |
-| `python -m job_agent web` | Launch Interactive Web Application Console & CLI Cheat Sheet | `--port 8000`, `--open` |
-| `python -m job_agent search-links` | Generate search URLs for top 10 USA platforms (jobs posted in last 1-2 weeks) | `--open`, `--browser system` |
-| `python -m job_agent fetch-jobs` | Directly search job platforms without browser (<10 jobs, <1-2 weeks old) | `--platforms dice,ziprecruiter,indeed`, `--limit 9` |
+| `python -m job_agent web` | Launch Interactive Web Application Console & CLI Cheat Sheet | `--port 8000`, `--open/--no-open` |
+| `python -m job_agent search-links` | Generate search URLs for top 10 USA platforms (jobs posted in last 14 days) | `--open`, `--browser system` |
+| `python -m job_agent fetch-jobs` | Directly search job platforms (default **3 jobs per platform**, max 9) | `--platforms dice,ziprecruiter,indeed`, `--limit 3` |
 | `python -m job_agent add-job` | Automated job import from a URL (extracts title, company, location, and description) | `--url`, `--title`, `--company`, `--description` |
 | `python -m job_agent sync-gmail` | Fetch and parse job alert emails from Gmail using OAuth 2.0 | `--max-results 25`, `--dry-run` |
+
+**Platform tiers:** dice, ziprecruiter, indeed are **recommended** (most reliable). LinkedIn, Glassdoor, Monster, and others are **experimental** (may return 0 when sites block bots).
 
 ---
 
@@ -128,15 +137,17 @@ Keep `python -m job_agent web` running while using the bookmark on job sites.
 ### 5. Maintenance, Cleanup & Backup
 | Command | Description | Key Parameters |
 | :--- | :--- | :--- |
-| `python -m job_agent cleanup` | Clean up duplicate jobs, stale/excluded listings, or reset database | `--action duplicates|stale|status|all`, `--confirm` |
+| `python -m job_agent cleanup` | Clean up duplicate jobs, stale/excluded listings, or reset database | `--action duplicates\|stale\|status\|all`, `--confirm` |
 | `python -m job_agent backup [PATH]` | Create full local timestamped ZIP backup of SQLite DB, settings, `.env`, and documents | Optional output ZIP path |
 | `python -m job_agent restore <backup_zip>` | Restore SQLite database and settings from a previously created ZIP backup archive | Required: ZIP file path |
-| `python -m job_agent delete-job <job_id>` | Safely delete a single job record from SQLite along with its generated output files | `--confirm` |
-| `python -m job_agent purge-data` | Complete wipe/purge of all database records (jobs, contacts, interviews, answers) | `--confirm` |
+| `python -m job_agent delete-job <job_id>` | Safely delete a single job record from SQLite along with its generated output files | Interactive confirm |
+| `python -m job_agent purge-data --confirm` | Complete wipe of **all 6 tables** (jobs, activity_logs, contacts, interviews, application_answers, processed_emails) | `--confirm` required |
+
+Alternative purge script: `python scripts/purge_database.py --confirm`
 
 ---
 
-## 🔐 Security & Privacy Safeguards Reference
+## Security & Privacy Safeguards Reference
 
 1. **Air-Gapped Local-First Data Storage**:
    - All job listings, SQLite database records (`data/jobs.db`), candidate profiles, master DOCX resumes, tailored applications, contacts, and logs remain stored strictly on your local machine.
@@ -153,3 +164,11 @@ Keep `python -m job_agent web` running while using the bookmark on job sites.
 
 5. **Git Version Control Exclusion Guardrails (`.gitignore`)**:
    - Automatically excludes `.env`, `credentials.json`, `token.json`, `*.db`, `data/`, `backups/`, and generated output files.
+
+---
+
+## Related Documentation
+
+- [USER_USAGE_GUIDE.md](USER_USAGE_GUIDE.md) — Full workflow guide
+- [docs/11-TESTING-PLAYBOOK.md](docs/11-TESTING-PLAYBOOK.md) — Smoke tests and troubleshooting
+- [docs/12-WEB-CONSOLE-API.md](docs/12-WEB-CONSOLE-API.md) — Web Console HTTP API reference
