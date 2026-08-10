@@ -979,12 +979,15 @@ def delete_job_cmd(
 
 
 @app.command("purge-data")
-def purge_data_cmd() -> None:
+def purge_data_cmd(
+    confirm: bool = typer.Option(False, "--confirm", help="Skip interactive prompt and purge immediately"),
+) -> None:
     """Purge all local database records (requires explicit confirmation)."""
     _, SessionLocal = _init_context()
     session = SessionLocal()
     try:
-        confirm = typer.confirm("CRITICAL: Are you sure you want to purge ALL local database records?", default=False)
+        if not confirm:
+            confirm = typer.confirm("CRITICAL: Are you sure you want to purge ALL local database records?", default=False)
         if not confirm:
             console.print("[yellow]Purge cancelled.[/yellow]")
             return

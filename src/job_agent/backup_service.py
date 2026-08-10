@@ -77,17 +77,12 @@ def delete_job_record(session: Session, job_id: int) -> bool:
 
 def purge_all_data(session: Session) -> int:
     """
-    Purge all records from jobs, contacts, interviews, application_answers, and processed_emails tables.
+    Purge all records from every database table.
     Returns total deleted count.
     """
-    from job_agent.database import ApplicationAnswer, ContactRecord, InterviewRecord, ProcessedEmail
+    from job_agent.cleanup_service import purge_all_database_data
 
-    count = 0
-    count += session.query(JobRecord).delete()
-    count += session.query(ContactRecord).delete()
-    count += session.query(InterviewRecord).delete()
-    count += session.query(ApplicationAnswer).delete()
-    count += session.query(ProcessedEmail).delete()
-    session.commit()
-    logger.info("Purged %d total database records.", count)
-    return count
+    counts = purge_all_database_data(session)
+    total = sum(counts.values())
+    logger.info("Purged %d total database records.", total)
+    return total

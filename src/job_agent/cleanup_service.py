@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 from sqlalchemy.orm import Session
 
 from job_agent.database import (
+    ActivityLogRecord,
     ApplicationAnswer,
     ContactRecord,
     InterviewRecord,
@@ -63,25 +64,29 @@ def clean_old_jobs(session: Session, days: int = 30) -> int:
 
 def purge_all_database_data(session: Session) -> dict[str, int]:
     """
-    Purge all records from all tables (jobs, contacts, interviews, application_answers, processed_emails).
-    Resets test database to a completely clean state.
+    Purge all records from all tables (jobs, activity_logs, contacts, interviews,
+    application_answers, processed_emails). Resets the database to a clean empty state.
     """
-    counts = {}
+    counts: dict[str, int] = {}
 
-    r1 = session.execute(delete(JobRecord))
-    counts["jobs"] = r1.rowcount or 0
+    table_models: list[tuple[str, type]] = [
+        ("jobs", JobRecord),
+        ("activity_logs", ActivityLogRecord),
+        ("contacts", ContactRecord),
+        ("interviews", InterviewRecord),
+        ("application_answers", ApplicationAnswer),
+        ("processed_emails", ProcessedEmail),
+    ]
 
-    r2 = session.execute(delete(ContactRecord))
-    counts["contacts"] = r2.rowcount or 0
+    for table_name, model in table_models:
+        result = session.execute(delete(model))
+        counts[table_name] = result.rowcount or 0
 
-    r3 = session.execute(delete(InterviewRecord))
-    counts["interviews"] = r3.rowcount or 0
-
-    r4 = session.execute(delete(ApplicationAnswer))
-    counts["answers"] = r4.rowcount or 0
-
-    r5 = session.execute(delete(ProcessedEmail))
-    counts["processed_emails"] = r5.rowcount or 0
+    seq_table = session.execute(
+        text("SELECT name FROM sqlite_master WHERE type='table' AND name='sqlite_sequence'")
+    ).fetchone()
+    if seq_table:
+        session.execute(text("DELETE FROM sqlite_sequence"))
 
     session.commit()
     logger.info("Purged all database tables: %s", counts)

@@ -37,6 +37,7 @@ def test_get_index_html(web_server):
         assert 'href="/capture"' in html
         assert "Install Bookmarklet" in html
         assert 'id="bookmarklet-install-card"' in html
+        assert "function goFindJobsNow" in html
 
 
 def test_get_api_commands(web_server):

@@ -10,6 +10,7 @@ import urllib.parse
 from datetime import date, datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from socketserver import ThreadingMixIn
 from threading import Thread
 from typing import Any
 
@@ -457,7 +458,7 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
                 <div class="card-body d-flex flex-wrap gap-2 align-items-center justify-content-between py-3">
                     <span class="fw-bold"><i class="bi bi-lightning-charge-fill text-warning"></i> Primary Actions:</span>
                     <div class="d-flex gap-2">
-                        <button class="btn btn-primary" onclick="switchTab('discovery-tab')"><i class="bi bi-search"></i> Find Jobs Now (Top 10 Platforms)</button>
+                        <button class="btn btn-primary" onclick="goFindJobsNow()"><i class="bi bi-search"></i> Find Jobs Now (Top 10 Platforms)</button>
                         <button class="btn btn-outline-primary" onclick="triggerQuickCommand('sync-gmail', [])"><i class="bi bi-envelope-at"></i> Sync Gmail Alerts</button>
                         <button class="btn btn-outline-success" onclick="openImportUrlModal()"><i class="bi bi-link-45deg"></i> Import Job URL</button>
                         <button class="btn btn-warning text-dark" onclick="switchTab('review-tab')"><i class="bi bi-file-earmark-check"></i> Review Resume Drafts</button>
@@ -1029,15 +1030,21 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
     }
 
     document.addEventListener("DOMContentLoaded", function() {
-        renderTop10PlatformsGrid();
-        updateBookmarkletInstallStatus();
+        try { renderTop10PlatformsGrid(); } catch (err) { console.error("renderTop10PlatformsGrid failed:", err); }
+        try { updateBookmarkletInstallStatus(); } catch (err) { console.error("updateBookmarkletInstallStatus failed:", err); }
         loadAllData();
-        loadCommandsMetadata();
-        fetchProfile();
+        try { loadCommandsMetadata(); } catch (err) { console.error("loadCommandsMetadata failed:", err); }
+        try { fetchProfile(); } catch (err) { console.error("fetchProfile failed:", err); }
     });
+
+    function goFindJobsNow() {
+        switchTab('discovery-tab');
+        runTop10JobSearch();
+    }
 
     function renderTop10PlatformsGrid() {
         const grid = document.getElementById('top-10-platforms-grid');
+        if (!grid) return;
         grid.innerHTML = '';
         TOP_10.forEach(p => {
             grid.innerHTML += `
@@ -1062,11 +1069,19 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
 
     function switchTab(tabId) {
         const el = document.getElementById(tabId);
+        if (!el || typeof bootstrap === 'undefined') return;
         bootstrap.Tab.getInstance(el)?.show() || new bootstrap.Tab(el).show();
     }
 
+    function fetchWithTimeout(url, options = {}, timeoutMs = 30000) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        return fetch(url, { ...options, signal: controller.signal })
+            .finally(() => clearTimeout(timer));
+    }
+
     function fetchStats() {
-        return fetch('/api/stats')
+        return fetchWithTimeout('/api/stats')
             .then(res => {
                 if (!res.ok) throw new Error("HTTP error " + res.status);
                 return res.json();
@@ -1111,13 +1126,16 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
                 console.error("Error in fetchStats:", err);
                 const hsBody = document.querySelector('#high-score-table tbody');
                 if (hsBody) {
-                    hsBody.innerHTML = '<tr><td colspan="6" class="text-center py-3 text-danger">Failed to load high score jobs.</td></tr>';
+                    const hint = err && err.name === 'AbortError'
+                        ? 'Dashboard stats timed out. If a job search is running, wait for it to finish or click Refresh.'
+                        : 'Failed to load high score jobs. Click Refresh or check the server terminal for errors.';
+                    hsBody.innerHTML = `<tr><td colspan="6" class="text-center py-3 text-danger">${hint}</td></tr>`;
                 }
             });
     }
 
     function fetchJobs() {
-        return fetch('/api/jobs')
+        return fetchWithTimeout('/api/jobs')
             .then(res => {
                 if (!res.ok) throw new Error("HTTP error " + res.status);
                 return res.json();
@@ -1351,17 +1369,21 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
         btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Searching Top 10 Platforms...';
         showProgress('Searching across top 10 USA job platforms (<10 jobs, <1-2 weeks old)...', 10);
 
-        fetch('/api/jobs/find', {
+        fetchWithTimeout('/api/jobs/find', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({platforms: TOP_10})
+        }, 300000)
+        .then(res => {
+            if (!res.ok) throw new Error('HTTP error ' + res.status);
+            return res.json();
         })
-        .then(res => res.json())
         .then(data => {
             btn.disabled = false;
             btn.innerHTML = '<i class="bi bi-search"></i> Find Jobs Now';
-            finishProgress(`Search complete! Discovered ${data.jobs_recorded} jobs across platforms.`, true);
-            alert(`✅ Platform Search Complete!\n\nDiscovered ${data.jobs_recorded} jobs across platforms.`);
+            const count = data.jobs_recorded != null ? data.jobs_recorded : 0;
+            finishProgress(`Search complete! Discovered ${count} jobs across platforms.`, true);
+            alert(`✅ Platform Search Complete!\n\nDiscovered ${count} jobs across platforms.`);
             loadAllData();
         })
         .catch(err => {
@@ -1369,6 +1391,7 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
             btn.innerHTML = '<i class="bi bi-search"></i> Find Jobs Now';
             finishProgress('Search encountered an error', false);
             alert('Search encountered an error: ' + err);
+            loadAllData();
         });
     }
 
@@ -2445,9 +2468,13 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
             logger.info("%s - %s", self.address_string(), format)
 
 
+class _ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
+    daemon_threads = True
+
+
 def start_web_dashboard_server(host: str = "127.0.0.1", port: int = 8000) -> HTTPServer:
     """Start local web console and HTTP capture server on localhost."""
-    server = HTTPServer((host, port), WebConsoleRequestHandler)
+    server = _ThreadingHTTPServer((host, port), WebConsoleRequestHandler)
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
     logger.info("Local Web Console running on http://%s:%d/", host, port)
