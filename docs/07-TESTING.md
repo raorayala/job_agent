@@ -22,6 +22,7 @@ Install and run:
 pip install -e ".[dev]"
 python -m job_agent test --install-browsers   # one-time Chrome/Playwright setup
 python -m job_agent test                        # unit + API + E2E in visible Google Chrome
+python -m job_agent test --guided               # paced Chrome walkthrough (30s per step)
 python -m job_agent test --headless               # headless Chromium (CI/automation)
 python -m job_agent test --no-e2e                 # skip browser tests (fast console-only)
 python -m job_agent test --cov                    # with coverage

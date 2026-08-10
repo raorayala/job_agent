@@ -49,6 +49,7 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 markers = [
   "e2e: browser end-to-end tests in Google Chrome (Web Console UI)",
+  "guided: paced 30-second-per-step Chrome walkthrough for learning the UI",
 ]
 
 [tool.ruff]

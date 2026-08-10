@@ -126,12 +126,40 @@ CLI_COMMANDS_METADATA = [
                     {"name": "title", "flag": "--title", "type": "text", "default": "", "label": "Fallback Title"},
                     {"name": "company", "flag": "--company", "type": "text", "default": "", "label": "Fallback Company"}
                 ]
+            },
+            {
+                "id": "seed-demo",
+                "name": "seed-demo",
+                "cmd": "seed-demo",
+                "description": "Insert 3 sample jobs for dashboard smoke testing (no network).",
+                "params": [
+                    {"name": "analyze", "flag": "--analyze/--no-analyze", "type": "bool", "default": True, "label": "Re-score after seeding"}
+                ]
             }
         ]
     },
     {
         "category": "Analysis & Review-First Resume Tailoring",
         "commands": [
+            {
+                "id": "analyze",
+                "name": "analyze",
+                "cmd": "analyze",
+                "description": "Re-score all stored jobs against profile and master resume text.",
+                "params": [
+                    {"name": "min_score", "flag": "--min-score", "type": "number", "default": 0, "label": "Minimum score filter"}
+                ]
+            },
+            {
+                "id": "jobs",
+                "name": "jobs",
+                "cmd": "jobs",
+                "description": "List tracked jobs with status, match score, and platform.",
+                "params": [
+                    {"name": "min_score", "flag": "--min-score", "type": "number", "default": 0, "label": "Minimum match score"},
+                    {"name": "limit", "flag": "--limit", "type": "number", "default": 50, "label": "Max rows"}
+                ]
+            },
             {
                 "id": "tailor",
                 "name": "tailor",
@@ -182,6 +210,16 @@ CLI_COMMANDS_METADATA = [
                 "cmd": "backup",
                 "description": "Create local ZIP backup archive of SQLite DB, settings, and documents.",
                 "params": []
+            },
+            {
+                "id": "test",
+                "name": "test",
+                "cmd": "test",
+                "description": "Run full test suite; use --guided for paced Chrome walkthrough.",
+                "params": [
+                    {"name": "guided", "flag": "--guided", "type": "bool", "default": False, "label": "Guided Chrome walkthrough (30s per step)"},
+                    {"name": "no_e2e", "flag": "--no-e2e", "type": "bool", "default": False, "label": "Skip browser tests"}
+                ]
             }
         ]
     }
@@ -456,11 +494,26 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
                 </div>
             </div>
 
+            <!-- Getting Started Workflow -->
+            <div class="card border-0 shadow-sm mb-4 border-start border-primary border-4" id="getting-started-flow">
+                <div class="card-body py-3">
+                    <div class="fw-bold mb-2"><i class="bi bi-signpost-split-fill text-primary"></i> Recommended workflow</div>
+                    <ol class="mb-0 small text-muted ps-3">
+                        <li class="mb-1"><strong class="text-dark">Setup</strong> — Complete the checklist below (profile, resume, Gmail OAuth).</li>
+                        <li class="mb-1"><strong class="text-dark">Discover</strong> — Load demo jobs, search recommended platforms, or import via URL / bookmarklet.</li>
+                        <li class="mb-1"><strong class="text-dark">Score</strong> — Click <em>Re-Score Jobs</em> after profile changes; edit incomplete imports for better matches.</li>
+                        <li class="mb-1"><strong class="text-dark">Review</strong> — Tailor drafts, approve explicitly, then apply manually on the employer site.</li>
+                        <li><strong class="text-dark">Track</strong> — Move jobs on the Kanban board; mark Applied only after you submit.</li>
+                    </ol>
+                    <div class="mt-2 small text-muted">Run <code>python -m job_agent test --guided</code> for a paced Chrome walkthrough (30 seconds per step).</div>
+                </div>
+            </div>
+
             <!-- System Health & Onboarding -->
             <div class="card border-0 shadow-sm mb-4" id="system-health-card">
                 <div class="card-header bg-white fw-bold py-3 d-flex justify-content-between align-items-center">
                     <span><i class="bi bi-heart-pulse text-danger"></i> System Health & Setup Checklist</span>
-                    <button class="btn btn-sm btn-outline-success" onclick="seedDemoJobs()"><i class="bi bi-database-add"></i> Load Demo Jobs</button>
+                    <button class="btn btn-sm btn-outline-success" onclick="openSeedDemoModal()"><i class="bi bi-database-add"></i> Load Demo Jobs</button>
                 </div>
                 <div class="card-body">
                     <div class="row g-3 mb-3">
@@ -991,6 +1044,26 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
     </div>
 </div>
 
+<!-- SEED DEMO CONFIRMATION MODAL -->
+<div class="modal fade" id="seedDemoModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-light">
+                <h5 class="modal-title fw-bold"><i class="bi bi-database-add text-success"></i> Load Demo Jobs</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-2">Insert <strong>3 sample jobs</strong> for smoke testing and exploration?</p>
+                <p class="text-muted small mb-0">No network required. Safe to use on a fresh database. You can purge test data later from Database Explorer.</p>
+            </div>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success btn-sm fw-bold" onclick="executeSeedDemo()"><i class="bi bi-check-lg"></i> Load 3 Demo Jobs</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- EDIT JOB MODAL -->
 <div class="modal fade" id="editJobModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg">
@@ -1418,20 +1491,27 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
             });
     }
 
-    function seedDemoJobs() {
-        if (!confirm('Load 3 sample demo jobs for testing?')) return;
+    function openSeedDemoModal() {
+        new bootstrap.Modal(document.getElementById('seedDemoModal')).show();
+    }
+
+    function executeSeedDemo() {
+        bootstrap.Modal.getInstance(document.getElementById('seedDemoModal'))?.hide();
         showProgress('Seeding demo jobs...', 20);
         fetch('/api/jobs/seed-demo', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}' })
             .then(res => res.json())
             .then(data => {
-                finishProgress(`Loaded ${data.jobs_seeded || 0} demo jobs`, true);
-                alert(`Demo jobs loaded: ${(data.job_ids || []).map(id => '#' + id).join(', ')}`);
+                finishProgress(`Loaded ${data.jobs_seeded || 0} demo jobs (#${(data.job_ids || []).join(', #')})`, true);
                 loadAllData();
             })
             .catch(err => {
                 finishProgress('Demo seed failed', false);
                 alert('Demo seed failed: ' + err);
             });
+    }
+
+    function seedDemoJobs() {
+        openSeedDemoModal();
     }
 
     function openEditJobModal(jobId) {

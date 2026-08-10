@@ -33,7 +33,17 @@ python -m job_agent jobs
 | Recently Discovered Jobs | 3 demo rows with scores |
 | High-Match Opportunities | May show jobs if score ≥ 65, or helpful empty message |
 
-Alternative: click **Load Demo Jobs** on the dashboard (same as `seed-demo`).
+Alternative: click **Load Demo Jobs** on the dashboard (same as `seed-demo`). A confirmation modal appears before inserting sample data.
+
+## Guided Chrome walkthrough (~6 minutes)
+
+Learn every major UI flow with **30-second pauses** between steps:
+
+```powershell
+python -m job_agent test --guided
+```
+
+Chrome opens visibly. A step guide overlay appears in the bottom-right corner. The walkthrough covers: dashboard health, demo seed, re-score, job edit, platform search, resume review, Kanban, profile editor, CLI runner, database explorer, and bookmarklet install.
 
 ## Platform search path (~5+ minutes)
 

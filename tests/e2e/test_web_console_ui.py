@@ -30,6 +30,7 @@ def test_dashboard_homepage_loads(page: Page, web_base_url: str) -> None:
     expect(page.locator("h4")).to_contain_text("Job Search Agent")
     expect(page.locator("#global-progress-wrapper")).to_be_attached()
     expect(page.locator("#system-health-card")).to_be_visible()
+    expect(page.locator("#getting-started-flow")).to_be_visible()
 
 
 def test_main_navigation_tabs(page: Page, web_base_url: str) -> None:
@@ -86,10 +87,10 @@ def test_system_health_shows_checklist(page: Page, web_base_url: str) -> None:
 
 
 def test_load_demo_jobs_populates_recent_jobs(page: Page, web_base_url: str) -> None:
-    _accept_dialogs(page)
     page.goto(web_base_url)
     page.wait_for_load_state("networkidle")
     page.get_by_role("button", name="Load Demo Jobs").click()
+    page.get_by_role("button", name="Load 3 Demo Jobs").click()
     expect(page.locator("#recent-jobs-table tbody tr").first).to_contain_text("#", timeout=20000)
 
 

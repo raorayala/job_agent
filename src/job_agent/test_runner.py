@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -25,17 +26,26 @@ def run_test_suite(
     e2e: bool = True,
     verbose: bool = False,
     headless: bool = False,
+    guided: bool = False,
     extra_args: list[str] | None = None,
 ) -> TestRunResult:
     """Run pytest across unit, HTTP API, and optional browser E2E tests."""
-    cmd: list[str] = [sys.executable, "-m", "pytest", "tests"]
-
-    if not e2e:
-        cmd.extend(["-m", "not e2e"])
-    elif headless:
-        cmd.extend(["--browser-channel=chromium"])
+    if guided:
+        os.environ["E2E_FLOW_PAUSE_SECONDS"] = "30"
+        cmd = [sys.executable, "-m", "pytest", "tests/e2e/test_guided_user_flow.py", "-m", "guided"]
     else:
-        # Visible Google Chrome — matches end-user testing expectations.
+        cmd = [sys.executable, "-m", "pytest", "tests"]
+        if not e2e:
+            cmd.extend(["-m", "not e2e"])
+        else:
+            cmd.extend(["-m", "not guided"])
+
+    if not guided:
+        if e2e and headless:
+            cmd.extend(["--browser-channel=chromium"])
+        elif e2e:
+            cmd.extend(["--headed", "--browser-channel=chrome"])
+    else:
         cmd.extend(["--headed", "--browser-channel=chrome"])
 
     if coverage:
