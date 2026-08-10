@@ -1317,6 +1317,75 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
 </html>
 """
 
+HTML_CAPTURE_PAGE = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>1-Click Bookmarklet Endpoint — Job Search Agent</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <style>
+        body { background-color: #f8f9fa; font-family: system-ui, -apple-system, sans-serif; }
+        .hero-box { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: white; padding: 2rem; border-radius: 12px; }
+        .code-box { background-color: #0f172a; color: #38bdf8; font-family: monospace; font-size: 0.85rem; padding: 1rem; border-radius: 8px; word-break: break-all; }
+    </style>
+</head>
+<body>
+<div class="container py-5" style="max-width: 800px;">
+    <div class="hero-box shadow-sm mb-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h3 class="fw-bold mb-0"><i class="bi bi-bookmark-star-fill text-warning"></i> Bookmarklet Endpoint</h3>
+            <span class="badge bg-success fs-6"><i class="bi bi-check-circle-fill"></i> Endpoint Active</span>
+        </div>
+        <p class="text-light-50 mb-0">Local HTTP server listening on <code>http://localhost:8000/capture</code>. Save job listings from Indeed, LinkedIn, Dice, ZipRecruiter, or Glassdoor directly into SQLite with 1 click while browsing!</p>
+    </div>
+
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-white fw-bold py-3"><i class="bi bi-gear-fill text-primary"></i> 1-Click Bookmarklet Installer</div>
+        <div class="card-body">
+            <ol class="mb-4">
+                <li class="mb-2">Show Chrome Bookmarks Bar: press <code>Ctrl + Shift + B</code> (or <code>Cmd + Shift + B</code> on Mac).</li>
+                <li class="mb-2">Right-click Bookmarks Bar &rarr; <strong>Add page...</strong></li>
+                <li class="mb-2">Name it <strong>"Capture Job"</strong> and paste the javascript snippet below in the URL field.</li>
+            </ol>
+
+            <div class="code-box mb-3" id="bm-code">javascript:(function(){const title=document.querySelector('h1')?.innerText||document.title;const company=document.querySelector('[data-testid="inlineHeader-companyName"], .companyName, .company-name, [data-cy="search-result-company-name"]')?.innerText||"Unknown";const url=window.location.href;const description=document.querySelector('#jobDescriptionText, .job-description, .description, #job-description')?.innerText||document.body.innerText.slice(0,3000);fetch('http://localhost:8000/capture',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,company,url,description})}).then(res=>res.json()).then(data=>alert(`✅ Job Saved!\n\nID: #${data.job_id}\nTitle: ${data.title}\nCompany: ${data.company}\nScore: ${data.score}/100`)).catch(err=>alert('❌ Error: Make sure "python -m job_agent web" is running.'));})();</div>
+
+            <div class="d-flex gap-2">
+                <button class="btn btn-outline-primary" onclick="copyBookmarkletCode()"><i class="bi bi-clipboard"></i> Copy Bookmarklet Code</button>
+                <button class="btn btn-outline-success" onclick="testCaptureEndpoint()"><i class="bi bi-play-circle-fill"></i> Send Test Capture Payload</button>
+                <a href="/" class="btn btn-primary ms-auto"><i class="bi bi-speedometer2"></i> Open Web Dashboard</a>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+function copyBookmarkletCode() {
+    const code = document.getElementById('bm-code').innerText;
+    navigator.clipboard.writeText(code);
+    alert('✅ Bookmarklet snippet copied to clipboard! Paste it into Chrome Bookmark URL field.');
+}
+function testCaptureEndpoint() {
+    fetch('/capture', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            title: 'Sample Test Developer Position',
+            company: 'Test Employer Corp',
+            url: 'http://localhost:8000/capture-test',
+            description: 'Sample description for testing capture endpoint functionality.'
+        })
+    })
+    .then(res => res.json())
+    .then(data => alert(`✅ Test Capture Successful!\n\nJob ID: #${data.job_id}\nTitle: ${data.title}\nCompany: ${data.company}\nScore: ${data.score}/100`))
+    .catch(err => alert('Error testing capture endpoint: ' + err));
+}
+</script>
+</body>
+</html>
+"""
+
 
 class WebConsoleRequestHandler(BaseHTTPRequestHandler):
     """HTTP Request Handler serving Web Console dashboard, JSON APIs, and command runner."""
@@ -1346,6 +1415,13 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
                 self._set_cors_headers()
                 self.end_headers()
                 self.wfile.write(HTML_APP_TEMPLATE.encode("utf-8"))
+
+            elif url_path == "/capture":
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self._set_cors_headers()
+                self.end_headers()
+                self.wfile.write(HTML_CAPTURE_PAGE.encode("utf-8"))
 
             elif url_path == "/api/calendar.ics":
                 settings = get_settings()
