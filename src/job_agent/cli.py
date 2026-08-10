@@ -65,6 +65,7 @@ def main_callback() -> None:
 @app.command("setup")
 def setup_cmd(
     copy_env: bool = typer.Option(True, help="Create .env from .env.example if missing"),
+    open_bookmarklet: bool = typer.Option(False, "--open-bookmarklet", help="Open Bookmarklet setup page in browser during setup"),
 ) -> None:
     """Initialize local folders, SQLite DB, and print first-time setup checklist."""
     settings, SessionLocal = _init_context()
@@ -102,12 +103,18 @@ def setup_cmd(
 6. Authorized redirect URIs are handled by the local loopback server on first auth
    (google-auth-oauthlib). Scope used: gmail.readonly only.
 
+[cyan]1-Click Bookmarklet Endpoint (Setup Process Only)[/cyan]
+- Bookmarklet Setup URL: http://localhost:8000/capture
+- Install during setup by copying snippet to Chrome Bookmarks Bar
+- Run 'python -m job_agent setup --open-bookmarklet' to open setup page in browser
+
 [cyan]Personal files[/cyan]
 - Copy .env.example -> .env and set MASTER_RESUME_PATH
 - Edit config.yaml profile (skills, locations, exclusions, salary)
 - Place master resume DOCX at MASTER_RESUME_PATH (never commit it)
 
 [cyan]Next commands[/cyan]
+  py -m job_agent web
   py -m job_agent sync-gmail --dry-run
   py -m job_agent analyze
   py -m job_agent jobs --min-score 70
@@ -115,6 +122,10 @@ def setup_cmd(
 [dim]Safeguards: no auto-apply, no fabricated resume content, credentials stay local.[/dim]
 """
     console.print(Panel(checklist.strip(), title="Setup", border_style="green"))
+
+    if open_bookmarklet:
+        browser_choice = settings.preferred_browser or "system"
+        _open_in_browser("http://localhost:8000/capture", browser_choice=browser_choice)
 
 
 @app.command("sync-gmail")
@@ -623,7 +634,7 @@ def fetch_jobs_cmd(
 def serve_cmd(
     port: int = typer.Option(8000, "--port", help="Local HTTP port for Web Console & browser capture"),
     open_browser: bool = typer.Option(True, "--open/--no-open", help="Open Web Console in browser automatically"),
-    open_capture: bool = typer.Option(True, "--open-capture/--no-open-capture", help="Open Bookmarklet Endpoint http://localhost:8000/capture automatically"),
+    open_capture: bool = typer.Option(False, "--open-capture", help="Open Bookmarklet Setup Page http://localhost:8000/capture"),
 ) -> None:
     """Start local Web Console & CLI Cheat Sheet server on http://localhost:8000/."""
     import time
@@ -656,7 +667,7 @@ def serve_cmd(
 def web_cmd(
     port: int = typer.Option(8000, "--port", help="Local HTTP port"),
     open_browser: bool = typer.Option(True, "--open/--no-open", help="Open Web Console in browser"),
-    open_capture: bool = typer.Option(True, "--open-capture/--no-open-capture", help="Open Bookmarklet Endpoint http://localhost:8000/capture automatically"),
+    open_capture: bool = typer.Option(False, "--open-capture", help="Open Bookmarklet Setup Page http://localhost:8000/capture"),
 ) -> None:
     """Launch interactive Web Application Dashboard and CLI Command Runner in your browser."""
     serve_cmd(port=port, open_browser=open_browser, open_capture=open_capture)
