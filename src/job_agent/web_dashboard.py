@@ -945,7 +945,8 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
                 document.getElementById('rev-final-path').innerText = data.final_resume_path || 'Not finalized yet';
                 document.getElementById('rev-approval-badge').innerText = data.approval_status || 'Awaiting Review';
                 document.getElementById('rev-diff-summary').innerText = data.diff_summary || 'No diff summary available. Click "Generate New Draft" above.';
-            });
+            })
+            .catch(err => alert('❌ Failed loading draft review: ' + err));
     }
 
     function createDraftForJob(jobId) {
@@ -959,7 +960,8 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
             alert('✅ Resume Draft Created! Opening Review screen...');
             selectForReview(jobId);
             loadAllData();
-        });
+        })
+        .catch(err => alert('❌ Failed creating resume draft: ' + err));
     }
 
     function generateDraftForSelectedJob() {
@@ -985,7 +987,8 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
             alert('✅ Resume Approved & Finalized! Saved to jobapplied folder:\n\n' + data.final_resume_path);
             loadJobForReview(currentReviewJobId);
             loadAllData();
-        });
+        })
+        .catch(err => alert('❌ Failed approving draft: ' + err));
     }
 
     function rejectDraftForSelectedJob() {
@@ -1001,7 +1004,8 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
             alert('Draft rejected.');
             loadJobForReview(currentReviewJobId);
             loadAllData();
-        });
+        })
+        .catch(err => alert('❌ Failed rejecting draft: ' + err));
     }
 
     function runTop10JobSearch() {
@@ -1047,7 +1051,8 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
             bootstrap.Modal.getInstance(document.getElementById('importUrlModal'))?.hide();
             alert(`✅ Job Imported Successfully!\n\nID: #${data.job_id}\nTitle: ${data.title}\nCompany: ${data.company}\nMatch Score: ${data.score}/100`);
             loadAllData();
-        });
+        })
+        .catch(err => alert('❌ Failed importing job from URL: ' + err));
     }
 
     function moveJobStatus(jobId, newStatus) {
@@ -1059,7 +1064,8 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
         .then(res => res.json())
         .then(data => {
             if (data.status === 'success') loadAllData();
-        });
+        })
+        .catch(err => alert('❌ Failed updating status: ' + err));
     }
 
     function loadDbExplorer() {
@@ -1106,7 +1112,8 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
             alert(data.message);
             loadTableData(tableName);
             loadAllData();
-        });
+        })
+        .catch(err => alert('❌ Failed deleting row: ' + err));
     }
 
     function triggerQuickCleanup(action) {
@@ -1121,7 +1128,8 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
             alert('✅ Cleanup complete: ' + data.message);
             loadAllData();
             loadDbExplorer();
-        });
+        })
+        .catch(err => alert('❌ Failed running cleanup: ' + err));
     }
 
     function fetchProfile() {
