@@ -97,6 +97,7 @@ Keep `python -m job_agent web` running while using the bookmark on job sites.
 | `python -m job_agent profile` | Display loaded candidate profile, target titles, skills, and multi-resumes | None |
 | `python -m job_agent statuses` | List supported application lifecycle statuses | None |
 | `python -m job_agent seed-demo` | Insert 3 sample jobs for dashboard smoke testing | `--analyze/--no-analyze` |
+| `python -m job_agent test` | Run full suite; E2E opens **visible Google Chrome** | `--headless`, `--no-e2e`, `--cov`, `--install-browsers` |
 
 ---
 

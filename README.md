@@ -142,10 +142,14 @@ Set environment variables in `.env`:
 
 ## Tests
 
-Run the full test suite (53 passing tests):
+Run the full test suite (63 tests). **Web Console tests run in visible Google Chrome** by default:
 
 ```powershell
-pytest
+pip install -e ".[dev]"
+python -m job_agent test --install-browsers   # one-time setup
+python -m job_agent test                        # opens Chrome for E2E web tests
+python -m job_agent test --headless             # CI/automation (no visible browser)
+python -m job_agent test --no-e2e               # console-only (fast)
 ```
 
 ## License

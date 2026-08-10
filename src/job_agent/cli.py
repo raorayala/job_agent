@@ -41,6 +41,7 @@ from job_agent.models import ApplicationStatus, MatchExplanation, ParsedJob, Rec
 from job_agent.platform_fetcher import search_and_import_jobs
 from job_agent.report_service import generate_pipeline_summary, generate_report
 from job_agent.resume_tailor import generate_cover_letter, tailor_resume
+from job_agent.test_runner import install_playwright_browsers, run_test_suite
 
 app = typer.Typer(
     name="job-agent",
@@ -1096,6 +1097,53 @@ def statuses_cmd() -> None:
     """List supported application statuses."""
     for status in ApplicationStatus:
         console.print(f"- {status.value}")
+
+
+@app.command("test")
+def test_cmd(
+    coverage: bool = typer.Option(False, "--cov", help="Include coverage report for job_agent"),
+    e2e: bool = typer.Option(True, "--e2e/--no-e2e", help="Include Playwright browser E2E tests"),
+    headless: bool = typer.Option(
+        False,
+        "--headless",
+        help="Run E2E in headless Chromium (CI/automation). Default opens visible Google Chrome.",
+    ),
+    verbose: bool = typer.Option(False, "-v", "--verbose", help="Verbose pytest output"),
+    install_browsers: bool = typer.Option(
+        False,
+        "--install-browsers",
+        help="Install Playwright Chrome support (one-time setup) and exit",
+    ),
+) -> None:
+    """Run the full test suite: unit tests, HTTP API tests, and browser E2E tests in Google Chrome."""
+    if install_browsers:
+        console.print("[cyan]Installing Playwright Google Chrome support for browser E2E tests...[/cyan]")
+        console.print("[dim]Ensure Google Chrome is installed on this machine (https://google.com/chrome)[/dim]")
+        code = install_playwright_browsers(chrome=True)
+        if code == 0:
+            console.print("[green]Playwright Chrome support installed.[/green]")
+        raise typer.Exit(code)
+
+    if e2e and not headless:
+        mode = "unit + API + E2E in visible Google Chrome"
+    elif e2e:
+        mode = "unit + API + E2E (headless Chromium)"
+    else:
+        mode = "unit + API only (no browser)"
+    console.print(f"[bold]Running test suite[/bold] ({mode})")
+    if e2e and not headless:
+        console.print("[cyan]Chrome will open and run Web Console tests as an end user would see them.[/cyan]")
+    result = run_test_suite(coverage=coverage, e2e=e2e, verbose=verbose, headless=headless)
+    if result.exit_code == 0:
+        console.print("[green]All tests passed.[/green]")
+    else:
+        console.print("[red]Tests failed.[/red]")
+        if e2e:
+            console.print(
+                "[dim]Tip: install Chrome + run "
+                "python -m job_agent test --install-browsers[/dim]"
+            )
+    raise typer.Exit(result.exit_code)
 
 
 if __name__ == "__main__":

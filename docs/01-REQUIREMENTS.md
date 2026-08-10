@@ -132,6 +132,7 @@ CLI commands:
 | `python -m job_agent seed-demo` | Insert sample jobs for testing |
 | `python -m job_agent fetch-jobs` | Search selected platforms (default 3 jobs each) |
 | `python -m job_agent purge-data --confirm` | Wipe all DB tables |
+| `python -m job_agent test` | Run full suite (unit + API + browser E2E) | `--no-e2e`, `--cov`, `--install-browsers` |
 
 Dry-run mode required for Gmail sync and resume generation.
 
@@ -162,7 +163,7 @@ ZipRecruiter, Indeed, Glassdoor, Dice, Lensa — configured in `config.yaml` via
 - [x] Artifacts land under Desktop/Jobs Applied
 - [x] System runs with `LLM_PROVIDER=none`
 - [x] Web Console provides platform search, health panel, demo seed, and job edit
-- [x] 53 automated tests pass
+- [x] 63 automated tests pass (unit, API, Playwright E2E)
 
 ## 9. Current fulfillment status (v0.1.0)
 
@@ -176,4 +177,4 @@ ZipRecruiter, Indeed, Glassdoor, Dice, Lensa — configured in `config.yaml` via
 | Web Application Console (not Streamlit) | **Done** |
 | Top 10 platform adapters with selectable checkboxes | **Done** |
 | System health, demo seed, job edit, auto-analyze | **Done** |
-| 53 automated tests | **Done** |
+| 63 automated tests (unit, API, browser E2E) | **Done** |

@@ -230,7 +230,7 @@ def execute_cli_command(cmd_name: str, raw_args: list[str]) -> dict[str, Any]:
         }
 
 
-HTML_APP_TEMPLATE = """<!DOCTYPE html>
+HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -2160,7 +2160,7 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
 </html>
 """
 
-HTML_CAPTURE_PAGE = """<!DOCTYPE html>
+HTML_CAPTURE_PAGE = r"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
