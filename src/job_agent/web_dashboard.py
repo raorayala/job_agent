@@ -3,9 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
-import subprocess
-import sys
 import urllib.parse
 from datetime import date, datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -61,6 +58,20 @@ from job_agent.resume_optimize import (
     update_suggestion,
 )
 from job_agent.resume_parser import extract_resume_text
+from job_agent.services.cli_runner import execute_cli_command
+from job_agent.services.web_security import (
+    ROLE_HEADER,
+    TOKEN_HEADER,
+    assert_admin_cli_allowed,
+    cors_allow_origin,
+    extract_request_role,
+    extract_request_token,
+    is_valid_console_token,
+    requires_admin_role,
+    requires_console_token,
+    resolve_console_token,
+    validate_readonly_sql,
+)
 from job_agent.system_health import get_system_health
 
 logger = get_logger(__name__)
@@ -248,46 +259,15 @@ CLI_COMMANDS_METADATA = [
 ]
 
 
-def execute_cli_command(cmd_name: str, raw_args: list[str]) -> dict[str, Any]:
-    """Execute python -m job_agent <cmd_name> <args> in a subprocess and return output."""
-    env = dict(os.environ)
-    env["PYTHONUTF8"] = "1"
-    env["PYTHONIOENCODING"] = "utf-8"
+def run_allowlisted_cli(cmd_name: str, raw_args: list[str]) -> dict[str, Any]:
+    """Execute an allowlisted `python -m job_agent` command for the Web Console."""
+    return execute_cli_command(cmd_name, raw_args, command_metadata=CLI_COMMANDS_METADATA)
 
-    cmd = [sys.executable, "-m", "job_agent", cmd_name] + raw_args
-    try:
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=120,
-            env=env,
-        )
-        stdout = proc.stdout or ""
-        stderr = proc.stderr or ""
-        output = (stdout + ("\n" + stderr if stderr else "")).strip()
-        return {
-            "success": proc.returncode == 0,
-            "exit_code": proc.returncode,
-            "output": output or "(Command produced no console output)",
-            "command": " ".join(cmd),
-        }
-    except subprocess.TimeoutExpired:
-        return {
-            "success": False,
-            "exit_code": -1,
-            "output": "Error: Command execution timed out after 120 seconds.",
-            "command": " ".join(cmd),
-        }
-    except Exception as exc:
-        return {
-            "success": False,
-            "exit_code": -1,
-            "output": f"Error executing command: {exc}",
-            "command": " ".join(cmd),
-        }
+
+def render_app_html() -> str:
+    """Inject the local console API token into the dashboard HTML (same-origin only)."""
+    token = resolve_console_token()
+    return HTML_APP_TEMPLATE.replace("__CONSOLE_API_TOKEN__", token)
 
 
 HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
@@ -1993,6 +1973,19 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
     let progressHideTimer = null;
     let progressStartedAt = 0;
     const PROGRESS_MIN_VISIBLE_MS = 1500;
+    const CONSOLE_API_TOKEN = "__CONSOLE_API_TOKEN__";
+    const _nativeFetch = window.fetch.bind(window);
+    window.fetch = function(input, init) {
+        const opts = init ? {...init} : {};
+        const headers = new Headers(opts.headers || {});
+        if (CONSOLE_API_TOKEN && CONSOLE_API_TOKEN !== "__CONSOLE_API_TOKEN__") {
+            headers.set('X-Console-Token', CONSOLE_API_TOKEN);
+        }
+        const role = document.body.classList.contains('console-mode-admin') ? 'admin' : 'user';
+        headers.set('X-Console-Role', role);
+        opts.headers = headers;
+        return _nativeFetch(input, opts);
+    };
 
     const KANBAN_STATUSES = ["Imported", "Analyzed", "Resume draft ready", "Awaiting review", "Approved", "Applied", "Interviewing", "Offer", "Rejected"];
     const TOP_10 = ["indeed", "linkedin", "glassdoor", "monster", "ziprecruiter", "careerbuilder", "simplyhired", "dice", "wellfound", "google_jobs"];
@@ -3375,13 +3368,31 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
     }
 
     function moveJobStatus(jobId, newStatus) {
+        let confirmApplied = false;
+        if (newStatus === 'Applied') {
+            if (!confirm('Mark this job as Applied? Only confirm after you have submitted the application.')) {
+                loadAllData();
+                return;
+            }
+            confirmApplied = true;
+        }
         showProgress(`Updating Job #${jobId} status to '${newStatus}'...`, 30);
         fetch('/api/jobs/update-status', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({job_id: parseInt(jobId), status: newStatus})
+            body: JSON.stringify({
+                job_id: parseInt(jobId),
+                status: newStatus,
+                confirm_applied: confirmApplied
+            })
         })
-        .then(res => res.json())
+        .then(async res => {
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                throw new Error(data.error || `HTTP ${res.status}`);
+            }
+            return data;
+        })
         .then(data => {
             if (data.status === 'success') {
                 finishProgress(`Status updated to '${newStatus}'`, true);
@@ -3391,6 +3402,7 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
         .catch(err => {
             finishProgress('Failed updating status', false);
             alert('❌ Failed updating status: ' + err);
+            loadAllData();
         });
     }
 
@@ -3849,9 +3861,59 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
     """HTTP Request Handler serving Web Console dashboard, JSON APIs, and command runner."""
 
     def _set_cors_headers(self) -> None:
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "*")
+        origin = self.headers.get("Origin")
+        allowed = cors_allow_origin(origin)
+        if allowed:
+            self.send_header("Access-Control-Allow-Origin", allowed)
+            self.send_header("Vary", "Origin")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header(
+                "Access-Control-Allow-Headers",
+                f"Content-Type, {TOKEN_HEADER}, {ROLE_HEADER}",
+            )
+
+    def _request_headers_dict(self) -> dict[str, str]:
+        return {str(k): str(v) for k, v in self.headers.items()}
+
+    def _send_json(self, status: int, payload: dict[str, Any]) -> None:
+        body = json.dumps(payload).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self._set_cors_headers()
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _authorize_api(self, url_path: str) -> bool:
+        """Return False if the request was rejected (response already sent)."""
+        headers = self._request_headers_dict()
+        if requires_console_token(url_path):
+            token = extract_request_token(headers)
+            if not is_valid_console_token(token):
+                self._send_json(
+                    403,
+                    {
+                        "error": (
+                            f"Missing or invalid {TOKEN_HEADER}. "
+                            "Set WEB_CONSOLE_TOKEN or use the token from data/web_console_token."
+                        )
+                    },
+                )
+                return False
+        if requires_admin_role(url_path):
+            role = extract_request_role(headers)
+            if role != "admin":
+                self._send_json(
+                    403,
+                    {
+                        "error": (
+                            f"Admin module required for this endpoint "
+                            f"(send {ROLE_HEADER}: admin)."
+                        )
+                    },
+                )
+                return False
+        return True
 
     def do_OPTIONS(self) -> None:
         try:
@@ -3867,12 +3929,15 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
         query_params = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
 
         try:
+            if not self._authorize_api(url_path):
+                return
+
             if url_path in ("/", "/dashboard", "/cheat-sheet", "/index.html"):
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self._set_cors_headers()
                 self.end_headers()
-                self.wfile.write(HTML_APP_TEMPLATE.encode("utf-8"))
+                self.wfile.write(render_app_html().encode("utf-8"))
 
             elif url_path == "/capture":
                 self.send_response(200)
@@ -4161,11 +4226,20 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
         body = self.rfile.read(content_length).decode("utf-8", errors="replace") if content_length > 0 else "{}"
 
         try:
+            if not self._authorize_api(url_path):
+                return
+
             if url_path == "/api/run-command":
                 data = json.loads(body)
                 cmd_name = data.get("command") or "help"
                 args = data.get("args") or []
-                res = execute_cli_command(cmd_name, [str(a) for a in args])
+                role = extract_request_role(self._request_headers_dict())
+                try:
+                    assert_admin_cli_allowed(str(cmd_name), role)
+                    res = run_allowlisted_cli(str(cmd_name), [str(a) for a in args])
+                except PermissionError as exc:
+                    self._send_json(403, {"success": False, "error": str(exc), "exit_code": 403})
+                    return
 
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
@@ -4652,34 +4726,48 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
                 data = json.loads(body)
                 job_id = int(data.get("job_id", 0))
                 new_status = str(data.get("status") or "Saved")
+                confirm_applied = bool(data.get("confirm_applied", False))
 
                 settings = get_settings()
                 SessionLocal = init_db(settings.database_path)
                 session = SessionLocal()
                 try:
-                    update_status(session, job_id, new_status, confirm_applied=True)
+                    update_status(session, job_id, new_status, confirm_applied=confirm_applied)
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json")
                     self._set_cors_headers()
                     self.end_headers()
                     self.wfile.write(json.dumps({"status": "success", "job_id": job_id, "new_status": new_status}).encode("utf-8"))
+                except PermissionError as exc:
+                    self._send_json(403, {"error": str(exc)})
+                except LookupError as exc:
+                    self._send_json(404, {"error": str(exc)})
                 finally:
                     session.close()
 
             elif url_path == "/api/db/query":
                 data = json.loads(body)
-                sql_query = data.get("query") or "SELECT 1;"
+                try:
+                    sql_query = validate_readonly_sql(data.get("query") or "")
+                except ValueError as exc:
+                    self._send_json(400, {"success": False, "error": str(exc)})
+                    return
                 settings = get_settings()
                 engine = create_db_engine(settings.database_path)
                 with engine.connect() as conn:
                     res = conn.execute(text(sql_query))
-                    if res.returns_rows:
-                        cols = list(res.keys())
-                        raw_rows = res.fetchall()
-                        rows = [dict(zip(cols, [str(v) if isinstance(v, (datetime, date)) else v for v in r])) for r in raw_rows]
-                        payload = {"success": True, "columns": cols, "rows": rows}
-                    else:
-                        payload = {"success": True, "message": "Query executed successfully."}
+                    cols = list(res.keys())
+                    raw_rows = res.fetchall()
+                    rows = [
+                        dict(
+                            zip(
+                                cols,
+                                [str(v) if isinstance(v, (datetime, date)) else v for v in r],
+                            )
+                        )
+                        for r in raw_rows
+                    ]
+                    payload = {"success": True, "columns": cols, "rows": rows}
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self._set_cors_headers()
@@ -4882,8 +4970,15 @@ class _ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
 
 def start_web_dashboard_server(host: str = "127.0.0.1", port: int = 8000) -> HTTPServer:
     """Start local web console and HTTP capture server on localhost."""
+    # Ensure token exists before serving privileged APIs.
+    token = resolve_console_token()
     server = _ThreadingHTTPServer((host, port), WebConsoleRequestHandler)
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
     logger.info("Local Web Console running on http://%s:%d/", host, port)
+    logger.info(
+        "Privileged APIs require %s (token length %d). CORS is loopback-only; SQL console is SELECT-only.",
+        TOKEN_HEADER,
+        len(token),
+    )
     return server

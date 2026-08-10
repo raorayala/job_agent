@@ -66,7 +66,7 @@ job-search-agent/
 │   ├── application_tracker.py
 │   ├── platform_fetcher.py     # Top 10 platform adapters + URL import
 │   ├── browser_capture.py      # HTTP server + bookmarklet endpoint
-│   ├── web_dashboard.py        # Web Console UI + API handlers
+│   ├── web_dashboard.py        # Web Console UI + API handlers (HTML still monolithic)
 │   ├── system_health.py        # Dashboard health panel + onboarding
 │   ├── demo_data.py            # seed-demo sample jobs
 │   ├── job_analysis.py         # Batch re-analyze after search
@@ -77,7 +77,7 @@ job-search-agent/
 │   ├── answer_service.py
 │   ├── report_service.py
 │   ├── notification_service.py
-│   └── services/               # higher-level orchestration (future)
+│   └── services/               # web_security, cli_runner (orchestration extracted from dashboard)
 ├── tests/
 ├── data/                       # local DB (gitignored contents)
 ├── templates/                  # optional templates
@@ -98,8 +98,10 @@ job-search-agent/
 | `document_exporter` | Folder/filename conventions |
 | `application_tracker` | Status transitions, explicit approval gate |
 | `platform_fetcher` | Direct search adapters for top 10 USA platforms; URL auto-import; per-platform reports |
-| `browser_capture` | ThreadingHTTPServer on `:8000`, CORS, bookmarklet POST `/capture` |
-| `web_dashboard` | Web Console HTML/JS, Kanban, Database Explorer, progress bar, CLI runner, REST API |
+| `browser_capture` | ThreadingHTTPServer on `:8000`, bookmarklet POST `/capture` |
+| `web_dashboard` | Web Console HTML/JS, Kanban, Database Explorer, progress bar, REST API |
+| `services.web_security` | Console token, loopback CORS, SELECT-only SQL, admin role gates |
+| `services.cli_runner` | Allowlisted `python -m job_agent` subprocess execution |
 | `system_health` | DB/Gmail/resume readiness, onboarding checklist for dashboard |
 | `demo_data` | Insert sample jobs for smoke testing (`seed-demo`) |
 | `job_analysis` | Batch re-score all jobs; auto-triggered after platform search |
@@ -155,7 +157,7 @@ job-search-agent/
 - Add platforms in `config.yaml` (`sender_domains`, `link_patterns`) and `platform_fetcher.py`
 - Swap matcher backend (rule → hybrid LLM) behind `score_job()`
 - Add exporters (PDF) via optional `pdf` extra
-- Add orchestration in `services/` without changing CLI surface
+- Continue extracting HTML/REST orchestration from `web_dashboard.py` into `services/` without changing CLI surface
 
 ## 10. Deployment topology (v1)
 

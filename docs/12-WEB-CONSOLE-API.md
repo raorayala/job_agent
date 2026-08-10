@@ -4,6 +4,15 @@ Local-only REST-style endpoints served by `python -m job_agent web` on `http://1
 
 Server uses `ThreadingHTTPServer` so long platform searches do not block stats/refresh requests.
 
+### Auth headers (privileged routes)
+
+| Header | Required for | Notes |
+|--------|--------------|-------|
+| `X-Console-Token` | `/api/db/*`, `/api/run-command`, `/api/console-settings` | From `WEB_CONSOLE_TOKEN` or `data/web_console_token` |
+| `X-Console-Role: admin` | `/api/db/*`, `/api/console-settings`, destructive CLI via `/api/run-command` | Dashboard sets this in Admin module |
+
+`/api/db/query` accepts **read-only** SQL only. `/api/run-command` is allowlisted to known CLI commands.
+
 ## Pages
 
 | Path | Description |
@@ -37,7 +46,7 @@ Server uses `ThreadingHTTPServer` so long platform searches do not block stats/r
 | `/api/jobs/seed-demo` | `{}` | Insert 3 demo jobs + analyze |
 | `/api/jobs/update` | `{ "job_id": 1, "title", "company", "description", "location" }` | Edit job + re-score |
 | `/api/jobs/import-url` | `{ "url": "https://..." }` | URL import |
-| `/api/jobs/update-status` | `{ "job_id", "status" }` | Kanban status change |
+| `/api/jobs/update-status` | `{ "job_id", "status", "confirm_applied?" }` | Kanban status change; `Applied` requires `confirm_applied: true` |
 | `/api/draft/create` | `{ "job_id" }` | Generate resume draft |
 | `/api/draft/approve` | `{ "job_id" }` | Approve draft |
 | `/api/draft/reject` | `{ "job_id" }` | Reject draft |
