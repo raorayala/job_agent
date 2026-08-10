@@ -754,6 +754,46 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
         #app-sidebar .sidebar-nav-btn.active .step-num {
             background: rgba(255,255,255,0.22);
         }
+        #app-sidebar .sidebar-ingest-label {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            width: calc(100% - 0.9rem);
+            margin: 0.2rem 0.45rem 0.1rem;
+            padding: 0.45rem 0.65rem;
+            color: #e2e8f0;
+            font-size: 0.84rem;
+            font-weight: 600;
+        }
+        #app-sidebar .sidebar-ingest-label .step-num {
+            width: 1.25rem;
+            height: 1.25rem;
+            border-radius: 999px;
+            background: rgba(148, 163, 184, 0.2);
+            color: inherit;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+        #app-sidebar .sidebar-submenu {
+            margin: 0 0.45rem 0.4rem 1.05rem;
+            padding: 0.15rem 0 0.2rem 0.45rem;
+            border-left: 2px solid #334155;
+        }
+        #app-sidebar .sidebar-submenu .sidebar-nav-btn {
+            width: calc(100% - 0.35rem);
+            margin: 0.08rem 0.1rem;
+            padding: 0.42rem 0.55rem;
+            font-size: 0.8rem;
+        }
+        #app-sidebar .sidebar-submenu .sidebar-nav-btn .step-num {
+            width: 1.15rem;
+            height: 1.15rem;
+            font-size: 0.62rem;
+        }
         #app-sidebar .nav-ico {
             width: 1.1rem;
             text-align: center;
@@ -893,10 +933,10 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
     </div>
     <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
         <span class="badge bg-light text-dark" id="console-mode-badge">User Mode</span>
-        <button class="btn btn-sm btn-primary" onclick="loadAllData()"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
-        <button class="btn btn-sm btn-header-secondary user-only" onclick="openImportUrlModal()"><i class="bi bi-link-45deg"></i> Import URL</button>
-        <a href="/capture" class="btn btn-sm btn-header-tertiary user-only" title="Install or re-install the 1-click Chrome bookmarklet"><i class="bi bi-bookmark-star"></i> Bookmarklet</a>
-        <a href="/api/calendar.ics" class="btn btn-sm btn-header-tertiary user-only"><i class="bi bi-calendar-event"></i> Calendar</a>
+        <div class="d-flex align-items-center gap-1 header-utils">
+            <button class="btn btn-sm btn-primary" onclick="loadAllData()" title="Refresh dashboard data"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
+            <a href="/capture" class="btn btn-sm btn-header-tertiary user-only" title="Install or re-install the 1-click Chrome bookmarklet"><i class="bi bi-bookmark-star"></i> Bookmarklet</a>
+        </div>
         <button type="button" class="btn btn-sm btn-header-tertiary" id="console-mode-home" onclick="showModuleGate()" title="Return to USER / ADMIN module chooser">
             <i class="bi bi-grid-1x2"></i> Switch Module
         </button>
@@ -927,7 +967,14 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
             <div class="sidebar-group">
                 <div class="sidebar-group-title"><i class="bi bi-window-sidebar me-1"></i> Web Tasks</div>
                 <button type="button" class="sidebar-nav-btn active" id="dashboard-tab" data-pane="dashboard-pane" onclick="navigateTo('dashboard-tab')"><span class="step-num">1</span><i class="bi bi-speedometer2 nav-ico"></i> Dashboard</button>
-                <button type="button" class="sidebar-nav-btn" id="discovery-tab" data-pane="discovery-pane" onclick="navigateTo('discovery-tab')"><span class="step-num">2</span><i class="bi bi-compass nav-ico"></i> Discover Jobs</button>
+                <div class="sidebar-ingest-label" id="job-ingestion-label" aria-label="Job Ingestion group">
+                    <span class="step-num">2</span><i class="bi bi-inbox nav-ico"></i> Job Ingestion
+                </div>
+                <div class="sidebar-submenu" id="job-ingestion-submenu" role="group" aria-label="Job Ingestion">
+                    <button type="button" class="sidebar-nav-btn" id="email-sync-nav" onclick="openEmailSyncFromNav()"><i class="bi bi-envelope-at nav-ico"></i> Sync Email Alerts</button>
+                    <button type="button" class="sidebar-nav-btn" id="import-url-nav" onclick="openImportUrlFromNav()"><i class="bi bi-link-45deg nav-ico"></i> Automated Job Import from URL</button>
+                    <button type="button" class="sidebar-nav-btn" id="discovery-tab" data-pane="discovery-pane" onclick="navigateTo('discovery-tab')"><i class="bi bi-compass nav-ico"></i> Discover Jobs</button>
+                </div>
                 <button type="button" class="sidebar-nav-btn" id="review-tab" data-pane="review-pane" onclick="navigateTo('review-tab')"><span class="step-num">3</span><i class="bi bi-file-earmark-check nav-ico"></i> Review &amp; Optimize</button>
                 <button type="button" class="sidebar-nav-btn" id="auto-apply-tab" data-pane="auto-apply-pane" onclick="navigateTo('auto-apply-tab')"><span class="step-num">4</span><i class="bi bi-send-check nav-ico"></i> Auto Apply</button>
                 <button type="button" class="sidebar-nav-btn" id="linkedin-tab" data-pane="linkedin-pane" onclick="navigateTo('linkedin-tab')"><span class="step-num">5</span><i class="bi bi-linkedin nav-ico"></i> LinkedIn Optimization</button>
@@ -997,13 +1044,13 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
                             </button>
                         </div>
                         <div class="col-md-6 col-xl-3">
-                            <button type="button" class="action-tile" onclick="openEmailSyncModal()">
+                            <button type="button" class="action-tile" onclick="openEmailSyncFromNav()">
                                 <span class="action-title"><i class="bi bi-envelope-at me-1"></i> Sync Email Alerts</span>
                                 <span class="action-sub">Gmail + Hotmail / Outlook</span>
                             </button>
                         </div>
                         <div class="col-md-6 col-xl-3">
-                            <button type="button" class="action-tile" onclick="openImportUrlModal()">
+                            <button type="button" class="action-tile" onclick="openImportUrlFromNav()">
                                 <span class="action-title"><i class="bi bi-link-45deg me-1"></i> Import Job URL</span>
                                 <span class="action-sub">Paste a listing link</span>
                             </button>
@@ -1166,11 +1213,11 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
             </div>
         </div>
 
-        <!-- JOB DISCOVERY PANE (USER Web Tasks step 2) -->
+        <!-- JOB DISCOVERY PANE (USER Web Tasks · Job Ingestion step 2) -->
         <div class="tab-pane fade user-only" id="discovery-pane">
             <div class="page-title-bar">
                 <h2><i class="bi bi-compass text-primary"></i> Discover Jobs</h2>
-                <span class="badge bg-primary-subtle text-primary">Web Tasks · Step 2</span>
+                <span class="badge bg-primary-subtle text-primary">Job Ingestion · Step 2</span>
             </div>
             <div class="card border-0 shadow-sm mb-4">
                 <div class="card-header bg-white fw-bold py-3">
@@ -1431,7 +1478,12 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
         <div class="tab-pane fade user-only" id="kanban-pane">
             <div class="page-title-bar">
                 <h2><i class="bi bi-kanban text-primary"></i> Application Board</h2>
-                <span class="badge bg-primary-subtle text-primary">Web Tasks · Step 6</span>
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <a href="/api/calendar.ics" class="btn btn-sm btn-outline-primary" title="Download interview follow-ups as .ics calendar">
+                        <i class="bi bi-calendar-event"></i> .ics Calendar
+                    </a>
+                    <span class="badge bg-primary-subtle text-primary">Web Tasks · Step 6</span>
+                </div>
             </div>
             <div class="row g-3" id="kanban-board-container">
                 <!-- Columns loaded dynamically -->
@@ -2204,6 +2256,22 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
 
     function goFindJobsNow() {
         navigateTo('discovery-tab');
+    }
+
+    function setSidebarActive(btnId) {
+        document.querySelectorAll('#app-sidebar .sidebar-nav-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.id === btnId);
+        });
+    }
+
+    function openEmailSyncFromNav() {
+        setSidebarActive('email-sync-nav');
+        openEmailSyncModal();
+    }
+
+    function openImportUrlFromNav() {
+        setSidebarActive('import-url-nav');
+        openImportUrlModal();
     }
 
     function openEmailSyncModal() {
