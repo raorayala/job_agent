@@ -205,6 +205,34 @@ python -m job_agent purge-data
 
 ---
 
+## 5. Interactive Web Application Console
+
+The **Web Application Console** provides a modern, 100% private visual interface to manage your job search pipeline.
+
+### 5.1 Launching the Console
+```powershell
+python -m job_agent web
+```
+This starts a local HTTP server on `http://localhost:8000/` and opens Google Chrome automatically.
+
+### 5.2 Key Web Features
+- **Visual Kanban Application Board**:
+  - Drag-and-drop or 1-click status transitions across `Saved`, `Reviewing`, `Ready to apply`, `Applied`, `Interviewing`, `Offer`, and `Rejected`.
+- **Slide-Over Job Details Modal**:
+  - Full Job Description text, matched skills badges (green), and missing keywords (red).
+  - **📁 Open Desktop Folder**: Click to launch `~/Desktop/Jobs Applied/<Company>/<Job Title>/` directly in **Windows File Explorer**!
+  - **📄 Tailor DOCX**: Generate ATS tailored DOCX resumes and cover letters.
+- **Profile & Skills Web Editor**:
+  - View and edit `config.yaml` target titles, required/preferred skills, salary, locations, and exclusions directly in browser with 1-click saving.
+- **Interactive CLI Cheat Sheet Runner**:
+  - Access form controls and **"▶ Run Command"** buttons for all 27 CLI commands with live terminal output.
+- **`.ics` iCalendar Exporter**:
+  - Download standard `.ics` files containing all upcoming follow-ups and scheduled interviews for Outlook/Google Calendar.
+- **Windows Desktop Toast Notifications**:
+  - Real-time native Windows Toast notifications whenever a new job scoring **≥ 70/100** is discovered.
+
+---
+
 ## 6. Complete CLI Command Reference
 
 | Command | Usage | Description |

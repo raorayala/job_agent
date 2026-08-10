@@ -68,11 +68,27 @@ python -m job_agent setup
 python -m job_agent profile
 ```
 
+### 🌐 Web Console & Visual Application Board
+
+Launch the local Web Application Console to manage applications, view Kanban cards, and execute CLI commands with 1 click:
+
+```powershell
+python -m job_agent web
+```
+This starts `http://localhost:8000/` featuring:
+- **Visual Kanban Board**: Drag & drop / 1-click status transitions across application stages.
+- **Slide-Over Job Details**: Full job description, matched/missing skills badges, and 1-click **Open Desktop Folder** in File Explorer (`~/Desktop/Jobs Applied/<Company>/<Job Title>/`).
+- **Profile & Skills Web Editor**: Interactive form to edit `config.yaml` target titles, skills, salary, and exclusions directly in browser.
+- **Calendar Exporter (`.ics`)**: Export follow-ups and scheduled interviews directly to Outlook / Google Calendar.
+- **Desktop Toast Notifications**: Real-time Windows Toast popups when high-score jobs (≥ 70/100) are discovered.
+- **1-Click Chrome Bookmarklet**: Save listings instantly while browsing Indeed, Dice, ZipRecruiter, Glassdoor, or LinkedIn.
+
 ### Daily Usage Commands
 
 For a full reference, see the **[CLI Command Cheat Sheet](CLI_CHEAT_SHEET.md)** or **[USER_USAGE_GUIDE.md](USER_USAGE_GUIDE.md)**.
 
 ```powershell
+python -m job_agent web                                 # Launch Web Console, Kanban Board & CLI Runner
 python -m job_agent serve                              # Start 1-click Chrome bookmarklet capture server
 python -m job_agent search-links --open --browser chrome  # Launch search URLs (<1-2 weeks old) in Chrome
 python -m job_agent fetch-jobs --platforms dice --limit 9 # Direct search (<10 jobs per platform, <1-2 weeks old)

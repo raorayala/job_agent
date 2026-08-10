@@ -6,7 +6,7 @@ A private, local-first personal career assistant.
 
 ## Interactive Web Console & Quick Reference Workflow
 
-Launch the Web Console in your browser to view results and execute commands with 1 click:
+Launch the Web Console in your browser to view results, manage Kanban cards, edit your candidate profile, and execute commands with 1 click:
 
 ```powershell
 python -m job_agent web
@@ -43,6 +43,50 @@ python -m job_agent mark-applied <job_id> --confirm
 python -m job_agent dashboard
 python -m job_agent follow-ups
 ```
+
+---
+
+## 🖥️ How to Use and Manage the Web Application Console
+
+The Web Application Console (`http://localhost:8000/`) gives you complete, 100% private visual control over your job search pipeline.
+
+### Step-by-Step Usage Guide:
+
+1. **Launching the Web Application**:
+   Open PowerShell and start the Web Console:
+   ```powershell
+   python -m job_agent web
+   ```
+   This automatically opens `http://localhost:8000/` in Google Chrome.
+
+2. **Dashboard Tab (Pipeline Metrics & High Matches)**:
+   - View top cards for **Total Tracked Jobs**, **High Match Opportunities**, **Follow-ups Due**, and **Upcoming Interviews**.
+   - Review high-score opportunities with color-coded score badges. Click **Tailor DOCX** to generate resume files immediately.
+
+3. **Kanban Application Board Tab (Visual Status Tracker)**:
+   - View jobs organized by columns: `Saved`, `Reviewing`, `Ready to apply`, `Applied`, `Interviewing`, `Offer`, `Rejected`.
+   - **Move Cards**: Change a job's application status with 1 click using the status dropdown on any card.
+   - **Inspect Details**: Click any card to open the Slide-Over Job Details Modal.
+
+4. **Slide-Over Job Details Modal**:
+   - Displays full job description, matched skills badges (green), and missing keywords (red).
+   - **📁 Open Desktop Folder**: Click to open `~/Desktop/Jobs Applied/<Company>/<Job Title>/` directly in **Windows File Explorer**!
+   - **📄 Tailor Resume & Cover Letter**: Generates ATS tailored DOCX files.
+   - **🌐 Open Link**: Opens job listing in Google Chrome.
+
+5. **Profile & Skills Editor Tab (`config.yaml`)**:
+   - Edit target job titles, required skills, preferred skills, experience years, salary range, locations, and excluded companies/titles directly in browser.
+   - Click **Save Profile Configuration** to save changes to `config.yaml` and re-score jobs in real time.
+
+6. **CLI Command Runner Tab**:
+   - Access form controls and **"▶ Run Command"** buttons for all 27 CLI commands.
+   - Click **Run Command** to execute any command in a subprocess and view output live in the **Terminal Output Console**.
+
+7. **Export `.ics` Calendar Events**:
+   - Click **Export .ics Calendar** in the top header to download a standard `.ics` file containing all upcoming follow-ups (automatically set for 7 days after application) and scheduled interviews. Import this file directly into Outlook, Google Calendar, or Apple Calendar.
+
+8. **Windows Desktop Toast Notifications**:
+   - Whenever you run `fetch-jobs` or `sync-gmail`, if a new job scoring **≥ 70/100** is discovered, a native Windows Toast popup alerts you immediately!
 
 ---
 
