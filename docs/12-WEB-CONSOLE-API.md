@@ -43,6 +43,9 @@ Server uses `ThreadingHTTPServer` so long platform searches do not block stats/r
 | `/api/draft/optimize` | `{ "job_id" }` | AI Optimize: keyword gaps + editable rewrite suggestions |
 | `/api/draft/suggestion` | `{ "job_id", "suggestion_id", "action": "accept\|reject\|edit", "edited_text?" }` | Update one optimize suggestion |
 | `/api/draft/optimize/apply` | `{ "job_id" }` | Apply accepted/edited suggestions into draft DOCX |
+| `/api/auto-apply/eligibility` | GET `?job_id=` | Check review-gated Auto Apply readiness |
+| `/api/auto-apply/launch` | `{ "job_id", "confirm?", "mark_as_applied?", "open_browser?", "open_resume_folder?" }` | Assisted Auto Apply (open job URL + resume folder; optional mark Applied) |
+| `/api/linkedin/optimize` | `{ "target_role?", "job_description?", "about_context?" }` | Dedicated LinkedIn headline/About/skills optimization drafts |
 | `/api/profile/optimize` | `{ "job_description?", "industry_role?" }` | Profile readiness, keyword gaps, skills audit, headline/About drafts |
 | `/api/run-command` | `{ "command", "args" }` | Execute CLI from web runner |
 | `/api/console-settings` | `{ "default_mode": "user\|admin", "guided_flow_pause_seconds": 15, "setup_locked": false }` | Persist console mode and guided-flow timing to `config.yaml` |

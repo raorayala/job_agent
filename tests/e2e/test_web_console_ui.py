@@ -63,11 +63,24 @@ def test_main_navigation_user_web_tasks(page: Page, web_base_url: str) -> None:
     for tab_id, pane_id in [
         ("#discovery-tab", "#discovery-pane"),
         ("#review-tab", "#review-pane"),
+        ("#auto-apply-tab", "#auto-apply-pane"),
+        ("#linkedin-tab", "#linkedin-pane"),
         ("#kanban-tab", "#kanban-pane"),
         ("#cls-tab", "#cls-pane"),
     ]:
         click_tab(page, tab_id)
         expect(page.locator(pane_id)).to_be_visible()
+
+
+def test_auto_apply_and_linkedin_nav(page: Page, web_base_url: str) -> None:
+    page.goto(web_base_url)
+    enter_module(page, "user")
+    click_tab(page, "#auto-apply-tab")
+    expect(page.locator("#auto-apply-pane")).to_be_visible()
+    expect(page.get_by_role("button", name="Launch Auto Apply")).to_be_attached()
+    click_tab(page, "#linkedin-tab")
+    expect(page.locator("#linkedin-pane")).to_be_visible()
+    expect(page.get_by_role("button", name="Optimize LinkedIn Profile")).to_be_visible()
 
 
 def test_ai_optimize_panel_on_review_tab(page: Page, web_base_url: str) -> None:

@@ -45,6 +45,8 @@ See [Testing Playbook](11-TESTING-PLAYBOOK.md).
 
 | Priority | Enhancement |
 |----------|-------------|
+| High | Review-gated assisted Auto Apply (open employer page + resume after approval) |
+| High | Dedicated LinkedIn Optimization page (headline/About/skills drafts) |
 | High | Per-platform live progress during search (streaming status) |
 | High | Gmail OAuth setup wizard in web UI |
 | Medium | Job duplicate merge UI with explanation |
@@ -55,7 +57,8 @@ See [Testing Playbook](11-TESTING-PLAYBOOK.md).
 
 ## 6. Explicitly deferred
 
-- Auto-submit applications  
+- Auto-submit without human review / CAPTCHA solving / silent form posting  
+  (assisted Auto Apply after resume approval is supported)
 - CAPTCHA solving  
 - Aggressive scraping of bot-protected sites (prefer bookmarklet + Gmail + URL import)  
 - Hosted multi-user SaaS  
