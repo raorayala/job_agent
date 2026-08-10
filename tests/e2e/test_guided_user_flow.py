@@ -7,7 +7,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.flow_helpers import accept_dialogs, click_tab, flow_step, switch_console_mode
+from tests.e2e.flow_helpers import accept_dialogs, click_tab, enter_module, flow_step, switch_console_mode
 
 pytestmark = [pytest.mark.e2e, pytest.mark.guided]
 
@@ -22,13 +22,15 @@ def test_guided_user_and_admin_walkthrough(page: Page, web_base_url: str) -> Non
         page,
         1,
         TOTAL_STEPS,
-        "User Mode — daily dashboard",
-        "Regular users start in User Mode: pipeline stats, primary actions, and job tables. "
-        "Admin setup tools are hidden until needed.",
+        "User Module — choose role then dashboard",
+        "The app opens on a USER / ADMIN module chooser so roles stay clear. "
+        "Enter User Module for daily job search and resume review.",
     )
     page.goto(web_base_url)
     page.wait_for_load_state("networkidle")
     expect(page).to_have_title(re.compile(r"Job Search Agent Web Console"))
+    expect(page.locator("#module-gate")).to_be_visible()
+    enter_module(page, "user")
     expect(page.locator("#console-mode-badge")).to_contain_text("User Mode")
     expect(page.locator("#user-focus-banner")).to_be_visible()
     expect(page.locator("#user-setup-status-card")).to_be_visible()

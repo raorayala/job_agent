@@ -1,4 +1,4 @@
-"""Update E2E tests for admin/user mode separation."""
+"""E2E tests for admin/user module separation and core console flows."""
 
 from __future__ import annotations
 
@@ -7,14 +7,22 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.flow_helpers import accept_dialogs, click_tab, switch_console_mode
+from tests.e2e.flow_helpers import accept_dialogs, click_tab, enter_module, switch_console_mode
 
 pytestmark = pytest.mark.e2e
 
 
-def test_dashboard_user_mode_default(page: Page, web_base_url: str) -> None:
+def test_module_gate_shows_user_and_admin(page: Page, web_base_url: str) -> None:
     page.goto(web_base_url)
     expect(page).to_have_title(re.compile(r"Job Search Agent Web Console"))
+    expect(page.locator("#module-gate")).to_be_visible()
+    expect(page.locator("#enter-user-module")).to_contain_text("USER Module")
+    expect(page.locator("#enter-admin-module")).to_contain_text("ADMIN Module")
+
+
+def test_dashboard_user_mode_default(page: Page, web_base_url: str) -> None:
+    page.goto(web_base_url)
+    enter_module(page, "user")
     expect(page.locator("#console-mode-badge")).to_contain_text("User Mode")
     expect(page.locator("#user-focus-banner")).to_be_visible()
     expect(page.locator("#user-setup-status-card")).to_be_visible()
@@ -43,7 +51,7 @@ def test_load_demo_jobs_in_admin_mode(page: Page, web_base_url: str) -> None:
 
 def test_main_navigation_user_tabs(page: Page, web_base_url: str) -> None:
     page.goto(web_base_url)
-    page.wait_for_load_state("networkidle")
+    enter_module(page, "user")
     for tab_id, pane_id in [
         ("#discovery-tab", "#discovery-pane"),
         ("#review-tab", "#review-pane"),
@@ -51,6 +59,14 @@ def test_main_navigation_user_tabs(page: Page, web_base_url: str) -> None:
     ]:
         click_tab(page, tab_id)
         expect(page.locator(pane_id)).to_be_attached()
+
+
+def test_ai_optimize_panel_on_review_tab(page: Page, web_base_url: str) -> None:
+    page.goto(web_base_url)
+    enter_module(page, "user")
+    click_tab(page, "#review-tab")
+    expect(page.locator("#ai-optimize-panel")).to_be_attached()
+    expect(page.get_by_role("button", name="Run AI Optimize")).to_be_attached()
 
 
 def test_system_health_shows_checklist_in_admin_mode(page: Page, web_base_url: str) -> None:
@@ -63,7 +79,7 @@ def test_system_health_shows_checklist_in_admin_mode(page: Page, web_base_url: s
 
 def test_discovery_platform_selection_ui(page: Page, web_base_url: str) -> None:
     page.goto(web_base_url)
-    page.wait_for_load_state("networkidle")
+    enter_module(page, "user")
     click_tab(page, "#discovery-tab")
     expect(page.locator("#platform-cb-dice")).to_be_attached()
     expect(page.get_by_role("button", name="Top 3 Recommended")).to_be_visible()
@@ -88,6 +104,8 @@ def test_profile_editor_admin_only(page: Page, web_base_url: str) -> None:
     switch_console_mode(page, "admin")
     click_tab(page, "#profile-tab")
     expect(page.get_by_role("button", name="Save Profile Configuration")).to_be_visible()
+    expect(page.locator("#profile-optimize-panel")).to_be_attached()
+    expect(page.get_by_role("button", name="Analyze Profile")).to_be_visible()
 
 
 def test_database_explorer_admin_only(page: Page, web_base_url: str) -> None:
