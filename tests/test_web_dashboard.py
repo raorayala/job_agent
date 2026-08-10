@@ -1,4 +1,4 @@
-"""Tests for web_dashboard server, API endpoints, and command runner."""
+"""Tests for web_dashboard server, API endpoints, database explorer, and command runner."""
 
 import json
 import urllib.request
@@ -60,6 +60,49 @@ def test_get_calendar_ics(web_server):
         content = resp.read().decode("utf-8")
         assert "BEGIN:VCALENDAR" in content
         assert "END:VCALENDAR" in content
+
+
+def test_db_explorer_endpoints(web_server):
+    # 1. Get Tables
+    req_tables = urllib.request.Request(f"{web_server}/api/db/tables")
+    with urllib.request.urlopen(req_tables, timeout=5) as resp:
+        assert resp.status == 200
+        tables_data = json.loads(resp.read().decode("utf-8"))
+        assert "jobs" in tables_data["tables"]
+
+    # 2. Get Table Data
+    req_data = urllib.request.Request(f"{web_server}/api/db/table-data?table=jobs")
+    with urllib.request.urlopen(req_data, timeout=5) as resp:
+        assert resp.status == 200
+        data = json.loads(resp.read().decode("utf-8"))
+        assert data["table"] == "jobs"
+        assert isinstance(data["rows"], list)
+
+    # 3. SQL Query Console
+    payload_query = json.dumps({"query": "SELECT count(*) FROM jobs;"}).encode("utf-8")
+    req_query = urllib.request.Request(
+        f"{web_server}/api/db/query",
+        data=payload_query,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req_query, timeout=5) as resp:
+        assert resp.status == 200
+        res_query = json.loads(resp.read().decode("utf-8"))
+        assert res_query["success"] is True
+
+    # 4. Cleanup Endpoint
+    payload_cleanup = json.dumps({"action": "duplicates"}).encode("utf-8")
+    req_cleanup = urllib.request.Request(
+        f"{web_server}/api/db/cleanup",
+        data=payload_cleanup,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req_cleanup, timeout=5) as resp:
+        assert resp.status == 200
+        res_cleanup = json.loads(resp.read().decode("utf-8"))
+        assert res_cleanup["status"] == "success"
 
 
 def test_get_and_post_profile(web_server):

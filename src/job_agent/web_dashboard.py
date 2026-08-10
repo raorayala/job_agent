@@ -1,4 +1,4 @@
-"""Web application dashboard, Kanban board, profile editor, and CLI command execution server."""
+"""Web application dashboard, Kanban board, database explorer, data cleanup, and CLI execution server."""
 
 from __future__ import annotations
 
@@ -7,15 +7,25 @@ import os
 import subprocess
 import sys
 import urllib.parse
+from datetime import date, datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from threading import Thread
 from typing import Any
 
+from sqlalchemy import text
+
 from job_agent.application_tracker import list_tracked_jobs, mark_applied, record_parsed_job, update_status
 from job_agent.backup_service import create_backup
+from job_agent.cleanup_service import (
+    clean_duplicate_jobs,
+    clean_jobs_by_status,
+    clean_old_jobs,
+    clean_stale_or_excluded_jobs,
+    purge_all_database_data,
+)
 from job_agent.config import get_settings, load_candidate_profile, save_candidate_profile
-from job_agent.database import JobRecord, get_job, init_db, list_jobs
+from job_agent.database import JobRecord, create_db_engine, get_job, init_db, list_jobs
 from job_agent.document_exporter import application_folder
 from job_agent.logging_config import get_logger
 from job_agent.models import CandidateProfile, ParsedJob
@@ -175,96 +185,20 @@ CLI_COMMANDS_METADATA = [
         ]
     },
     {
-        "category": "Contacts & Networking",
-        "commands": [
-            {
-                "id": "add-contact",
-                "name": "add-contact",
-                "cmd": "add-contact",
-                "description": "Store recruiter, referral, or hiring manager contact locally.",
-                "params": [
-                    {"name": "name", "flag": "positional", "type": "text", "default": "", "label": "Contact Name (required)", "required": True},
-                    {"name": "email", "flag": "--email", "type": "text", "default": "", "label": "Email Address"},
-                    {"name": "role", "flag": "--role", "type": "text", "default": "", "label": "Role / Title"},
-                    {"name": "company", "flag": "--company", "type": "text", "default": "", "label": "Company"},
-                    {"name": "job_id", "flag": "--job-id", "type": "number", "default": "", "label": "Linked Job ID"}
-                ]
-            },
-            {
-                "id": "contacts",
-                "name": "contacts",
-                "cmd": "contacts",
-                "description": "List all locally stored networking contacts.",
-                "params": []
-            }
-        ]
-    },
-    {
-        "category": "Interview Tracking & Prep",
-        "commands": [
-            {
-                "id": "add-interview",
-                "name": "add-interview",
-                "cmd": "add-interview",
-                "description": "Record an upcoming interview schedule and participants.",
-                "params": [
-                    {"name": "job_id", "flag": "positional", "type": "number", "default": "", "label": "Job ID (required)", "required": True},
-                    {"name": "interview_date", "flag": "positional", "type": "text", "default": "", "label": "Date (YYYY-MM-DD HH:MM)", "required": True},
-                    {"name": "type", "flag": "--type", "type": "text", "default": "Technical", "label": "Interview Type"},
-                    {"name": "interviewer", "flag": "--interviewer", "type": "text", "default": "", "label": "Interviewer / Participants"},
-                    {"name": "notes", "flag": "--notes", "type": "text", "default": "", "label": "Notes"}
-                ]
-            },
-            {
-                "id": "prepare-interview",
-                "name": "prepare-interview",
-                "cmd": "prepare-interview",
-                "description": "Generate local truthful interview preparation DOCX guide.",
-                "params": [
-                    {"name": "job_id", "flag": "positional", "type": "number", "default": "", "label": "Job ID (required)", "required": True},
-                    {"name": "dry_run", "flag": "--dry-run", "type": "bool", "default": False, "label": "Dry Run mode"}
-                ]
-            }
-        ]
-    },
-    {
-        "category": "Application Answer Library",
-        "commands": [
-            {
-                "id": "answers",
-                "name": "answers",
-                "cmd": "answers",
-                "description": "List saved reusable application question & answer pairs.",
-                "params": [
-                    {"name": "tag", "flag": "--tag", "type": "text", "default": "", "label": "Filter by Tag"}
-                ]
-            },
-            {
-                "id": "add-answer",
-                "name": "add-answer",
-                "cmd": "add-answer",
-                "description": "Save an approved application answer to local library.",
-                "params": [
-                    {"name": "question", "flag": "--question", "type": "text", "default": "", "label": "Question (required)", "required": True},
-                    {"name": "answer", "flag": "--answer", "type": "text", "default": "", "label": "Answer (required)", "required": True},
-                    {"name": "tags", "flag": "--tags", "type": "text", "default": "", "label": "Tags (comma separated)"}
-                ]
-            },
-            {
-                "id": "suggest-answer",
-                "name": "suggest-answer",
-                "cmd": "suggest-answer",
-                "description": "Draft answer suggestion for a job question using local resume & profile.",
-                "params": [
-                    {"name": "job_id", "flag": "positional", "type": "number", "default": "", "label": "Job ID (required)", "required": True},
-                    {"name": "question", "flag": "positional", "type": "text", "default": "", "label": "Question text (required)", "required": True}
-                ]
-            }
-        ]
-    },
-    {
         "category": "Maintenance & Data Security",
         "commands": [
+            {
+                "id": "cleanup",
+                "name": "cleanup",
+                "cmd": "cleanup",
+                "description": "Clean up test data, duplicates, stale/excluded jobs, or reset database.",
+                "params": [
+                    {"name": "action", "flag": "--action", "type": "select", "default": "duplicates", "options": ["duplicates", "stale", "status", "old", "all"], "label": "Cleanup Action"},
+                    {"name": "status", "flag": "--status", "type": "text", "default": "", "label": "Status filter (if action=status)"},
+                    {"name": "days", "flag": "--days", "type": "number", "default": 30, "label": "Days threshold (if action=old)"},
+                    {"name": "confirm", "flag": "--confirm", "type": "bool", "default": True, "label": "Confirm deletion"}
+                ]
+            },
             {
                 "id": "backup",
                 "name": "backup",
@@ -443,11 +377,11 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
 <header class="app-header d-flex justify-content-between align-items-center">
     <div>
         <h4 class="mb-0 fw-bold"><i class="bi bi-robot"></i> Job Search Agent Web Console</h4>
-        <small class="text-light-50">Local-first Private Assistant, Kanban Board & Automation Suite</small>
+        <small class="text-light-50">Local-first Private Assistant, Kanban Board & Database Explorer</small>
     </div>
     <div class="d-flex align-items-center gap-2">
         <a href="/api/calendar.ics" class="btn btn-sm btn-outline-light"><i class="bi bi-calendar-event"></i> Export .ics Calendar</a>
-        <span class="badge bg-success me-2"><i class="bi bi-shield-check"></i> Local-First (100% Private)</span>
+        <button class="btn btn-sm btn-danger" onclick="triggerQuickCleanup('all')"><i class="bi bi-trash3-fill"></i> Purge Test Data</button>
         <button class="btn btn-sm btn-primary" onclick="loadAllData()"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
     </div>
 </header>
@@ -463,6 +397,9 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
         </li>
         <li class="nav-item">
             <button class="nav-link" id="jobs-tab" data-bs-toggle="tab" data-bs-target="#jobs-pane"><i class="bi bi-briefcase"></i> Tracked Jobs Explorer</button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" id="db-tab" data-bs-toggle="tab" data-bs-target="#db-pane" onclick="loadDbExplorer()"><i class="bi bi-database-gear"></i> Database Explorer & Cleanup</button>
         </li>
         <li class="nav-item">
             <button class="nav-link" id="profile-tab" data-bs-toggle="tab" data-bs-target="#profile-pane"><i class="bi bi-person-gear"></i> Profile & Skills Editor</button>
@@ -585,6 +522,83 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
                             <tbody>
                                 <tr><td colspan="8" class="text-center py-4 text-muted">Loading tracked jobs...</td></tr>
                             </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- DATABASE EXPLORER & CLEANUP PANE -->
+        <div class="tab-pane fade" id="db-pane">
+            <div class="row g-3 mb-4">
+                <div class="col-md-4">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-header bg-white fw-bold py-3">
+                            <i class="bi bi-trash3 text-danger"></i> Data Cleanup Tools
+                        </div>
+                        <div class="card-body">
+                            <p class="text-muted small">Select an automated cleanup action to reset or prune your local SQLite database before testing.</p>
+                            <div class="d-grid gap-2">
+                                <button class="btn btn-outline-secondary text-start" onclick="triggerQuickCleanup('duplicates')"><i class="bi bi-copy"></i> Delete Duplicate Jobs</button>
+                                <button class="btn btn-outline-warning text-start" onclick="triggerQuickCleanup('stale')"><i class="bi bi-hourglass-bottom"></i> Delete Stale & Excluded Jobs</button>
+                                <div class="input-group">
+                                    <select class="form-select form-select-sm" id="cleanup-status-select">
+                                        <option value="Saved">Saved</option>
+                                        <option value="Reviewing">Reviewing</option>
+                                        <option value="Rejected">Rejected</option>
+                                    </select>
+                                    <button class="btn btn-sm btn-outline-secondary" onclick="triggerStatusCleanup()">Delete by Status</button>
+                                </div>
+                                <hr>
+                                <button class="btn btn-danger text-start fw-bold" onclick="triggerQuickCleanup('all')"><i class="bi bi-exclamation-triangle-fill"></i> Purge All Database Test Data</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-8">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-header bg-white fw-bold d-flex justify-content-between align-items-center py-2">
+                            <span><i class="bi bi-table text-primary"></i> SQLite Table Browser</span>
+                            <div class="d-flex align-items-center gap-2">
+                                <label class="small text-muted mb-0">Table:</label>
+                                <select class="form-select form-select-sm" id="db-table-selector" style="width: auto;" onchange="loadTableData(this.value)">
+                                    <option value="jobs">jobs</option>
+                                    <option value="contacts">contacts</option>
+                                    <option value="interviews">interviews</option>
+                                    <option value="application_answers">application_answers</option>
+                                    <option value="processed_emails">processed_emails</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive" style="max-height: 380px; overflow-y: auto;">
+                                <table class="table table-sm table-hover align-middle mb-0 fs-8" id="db-browser-table">
+                                    <thead class="table-light">
+                                        <tr><th>Select a table above...</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr><td class="text-center py-4 text-muted">Loading table data...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SQL Query Console -->
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-dark text-white fw-bold d-flex justify-content-between align-items-center py-2">
+                    <span><i class="bi bi-terminal text-success"></i> Interactive SQL Query Console (SQLite)</span>
+                    <button class="btn btn-sm btn-success" onclick="runCustomSqlQuery()"><i class="bi bi-play-fill"></i> Execute SQL</button>
+                </div>
+                <div class="card-body bg-dark text-white p-3">
+                    <textarea class="form-control font-monospace bg-dark text-light border-secondary mb-3" id="sql-query-input" rows="3" placeholder="Type raw SQL query (e.g., SELECT id, title, company, match_score, status FROM jobs WHERE match_score > 70 ORDER BY match_score DESC;)">SELECT id, title, company, status, match_score, source_platform FROM jobs ORDER BY id DESC LIMIT 20;</textarea>
+                    <div class="table-responsive" style="max-height: 250px; overflow-y: auto;">
+                        <table class="table table-dark table-sm table-striped font-monospace fs-8" id="sql-query-result-table">
+                            <thead><tr><th>Result will display here after execution...</th></tr></thead>
+                            <tbody></tbody>
                         </table>
                     </div>
                 </div>
@@ -965,6 +979,113 @@ Ready. Select a CLI command on the left and click "Run Command" to view direct o
         }
     }
 
+    function loadDbExplorer() {
+        const sel = document.getElementById('db-table-selector');
+        loadTableData(sel.value || 'jobs');
+    }
+
+    function loadTableData(tableName) {
+        fetch(`/api/db/table-data?table=${tableName}`)
+            .then(res => res.json())
+            .then(data => {
+                const tableEl = document.getElementById('db-browser-table');
+                if (!data.rows || data.rows.length === 0) {
+                    tableEl.innerHTML = '<thead><tr><th>Table Empty</th></tr></thead><tbody><tr><td class="text-center py-3 text-muted">No records in this table.</td></tr></tbody>';
+                    return;
+                }
+                const cols = data.columns || [];
+                let thead = '<tr>' + cols.map(c => `<th>${c}</th>`).join('') + '<th>Action</th></tr>';
+                let tbody = '';
+                data.rows.forEach(row => {
+                    let tr = '<tr>';
+                    cols.forEach(c => {
+                        let val = row[c];
+                        if (val === null || val === undefined) val = '<span class="text-muted">-</span>';
+                        else val = escapeHtml(String(val)).slice(0, 80);
+                        tr += `<td>${val}</td>`;
+                    });
+                    tr += `<td><button class="btn btn-xs btn-outline-danger py-0 px-1" onclick="deleteDbRow('${tableName}', '${row.id}')">Delete</button></td></tr>`;
+                    tbody += tr;
+                });
+                tableEl.innerHTML = `<thead class="table-light">${thead}</thead><tbody>${tbody}</tbody>`;
+            });
+    }
+
+    function deleteDbRow(tableName, rowId) {
+        if (!confirm(`Delete row #${rowId} from ${tableName}?`)) return;
+        fetch('/api/db/delete-row', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({table: tableName, id: parseInt(rowId)})
+        })
+        .then(res => res.json())
+        .then(data => {
+            alert(data.message);
+            loadTableData(tableName);
+            loadAllData();
+        });
+    }
+
+    function triggerQuickCleanup(action) {
+        if (action === 'all' && !confirm('⚠️ Are you sure you want to PURGE ALL database records? This resets your local database completely.')) return;
+        fetch('/api/db/cleanup', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({action: action})
+        })
+        .then(res => res.json())
+        .then(data => {
+            alert('✅ Cleanup complete: ' + data.message);
+            loadAllData();
+            loadDbExplorer();
+        });
+    }
+
+    function triggerStatusCleanup() {
+        const st = document.getElementById('cleanup-status-select').value;
+        if (!confirm(`Delete all jobs with status '${st}'?`)) return;
+        fetch('/api/db/cleanup', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({action: 'status', status: st})
+        })
+        .then(res => res.json())
+        .then(data => {
+            alert('✅ Cleanup complete: ' + data.message);
+            loadAllData();
+            loadDbExplorer();
+        });
+    }
+
+    function runCustomSqlQuery() {
+        const q = document.getElementById('sql-query-input').value;
+        if (!q) return;
+        fetch('/api/db/query', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({query: q})
+        })
+        .then(res => res.json())
+        .then(data => {
+            const tableEl = document.getElementById('sql-query-result-table');
+            if (!data.success) {
+                tableEl.innerHTML = `<thead><tr><th class="text-danger">SQL Error</th></tr></thead><tbody><tr><td>${data.error || 'Execution failed.'}</td></tr></tbody>`;
+                return;
+            }
+            if (!data.columns || data.columns.length === 0) {
+                tableEl.innerHTML = `<thead><tr><th class="text-success">Query Executed</th></tr></thead><tbody><tr><td>${data.message || 'Done'}</td></tr></tbody>`;
+                return;
+            }
+            let thead = '<tr>' + data.columns.map(c => `<th>${c}</th>`).join('') + '</tr>';
+            let tbody = '';
+            data.rows.forEach(r => {
+                tbody += '<tr>' + r.map(v => `<td>${escapeHtml(String(v ?? '-'))}</td>`).join('') + '</tr>';
+            });
+            tableEl.innerHTML = `<thead>${thead}</thead><tbody>${tbody}</tbody>`;
+            loadAllData();
+        });
+    }
+
     function fetchProfile() {
         fetch('/api/profile')
             .then(res => res.json())
@@ -1313,6 +1434,42 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
                 finally:
                     session.close()
 
+            elif url_path == "/api/db/tables":
+                payload = {"tables": ["jobs", "contacts", "interviews", "application_answers", "processed_emails"]}
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors_headers()
+                self.end_headers()
+                self.wfile.write(json.dumps(payload).encode("utf-8"))
+
+            elif url_path == "/api/db/table-data":
+                table_name = (query_params.get("table") or ["jobs"])[0]
+                valid_tables = {"jobs", "contacts", "interviews", "application_answers", "processed_emails"}
+                if table_name not in valid_tables:
+                    self.send_error(400, "Invalid table name")
+                    return
+                settings = get_settings()
+                engine = create_db_engine(settings.database_path)
+                with engine.connect() as conn:
+                    res = conn.execute(text(f"SELECT * FROM {table_name} ORDER BY id DESC LIMIT 100"))
+                    cols = list(res.keys())
+                    raw_rows = res.fetchall()
+                    rows = []
+                    for row in raw_rows:
+                        row_dict = {}
+                        for idx, col in enumerate(cols):
+                            val = row[idx]
+                            if isinstance(val, (datetime, date)):
+                                val = val.isoformat()
+                            row_dict[col] = val
+                        rows.append(row_dict)
+                    payload = {"table": table_name, "columns": cols, "rows": rows}
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self._set_cors_headers()
+                    self.end_headers()
+                    self.wfile.write(json.dumps(payload).encode("utf-8"))
+
             elif url_path == "/api/profile":
                 profile = load_candidate_profile()
                 payload = {
@@ -1365,6 +1522,97 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
                 self._set_cors_headers()
                 self.end_headers()
                 self.wfile.write(json.dumps(res).encode("utf-8"))
+
+            elif url_path == "/api/db/query":
+                data = json.loads(body)
+                query_str = (data.get("query") or "").strip()
+                if not query_str:
+                    self.send_error(400, "Empty SQL query")
+                    return
+                settings = get_settings()
+                engine = create_db_engine(settings.database_path)
+                try:
+                    with engine.begin() as conn:
+                        res = conn.execute(text(query_str))
+                        if res.returns_rows:
+                            cols = list(res.keys())
+                            raw_rows = res.fetchall()
+                            rows = []
+                            for row in raw_rows:
+                                r_converted = []
+                                for val in row:
+                                    if isinstance(val, (datetime, date)):
+                                        r_converted.append(val.isoformat())
+                                    else:
+                                        r_converted.append(val)
+                                rows.append(r_converted)
+                            payload = {"success": True, "columns": cols, "rows": rows, "row_count": len(rows)}
+                        else:
+                            payload = {"success": True, "columns": [], "rows": [], "row_count": res.rowcount or 0, "message": f"Query executed successfully ({res.rowcount or 0} rows affected)"}
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self._set_cors_headers()
+                    self.end_headers()
+                    self.wfile.write(json.dumps(payload).encode("utf-8"))
+                except Exception as q_err:
+                    payload = {"success": False, "error": str(q_err)}
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self._set_cors_headers()
+                    self.end_headers()
+                    self.wfile.write(json.dumps(payload).encode("utf-8"))
+
+            elif url_path == "/api/db/delete-row":
+                data = json.loads(body)
+                table_name = data.get("table") or "jobs"
+                row_id = int(data.get("id") or 0)
+                valid_tables = {"jobs", "contacts", "interviews", "application_answers", "processed_emails"}
+                if table_name not in valid_tables or not row_id:
+                    self.send_error(400, "Invalid parameters")
+                    return
+                settings = get_settings()
+                engine = create_db_engine(settings.database_path)
+                with engine.begin() as conn:
+                    conn.execute(text(f"DELETE FROM {table_name} WHERE id = :id"), {"id": row_id})
+                payload = {"status": "success", "message": f"Row #{row_id} deleted from table {table_name}"}
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors_headers()
+                self.end_headers()
+                self.wfile.write(json.dumps(payload).encode("utf-8"))
+
+            elif url_path == "/api/db/cleanup":
+                data = json.loads(body)
+                action = data.get("action") or "duplicates"
+                target_status = data.get("status") or ""
+
+                settings = get_settings()
+                SessionLocal = init_db(settings.database_path)
+                session = SessionLocal()
+                try:
+                    if action == "duplicates":
+                        cnt = clean_duplicate_jobs(session)
+                        msg = f"Cleaned {cnt} duplicate job records."
+                    elif action in ("stale", "excluded"):
+                        cnt = clean_stale_or_excluded_jobs(session)
+                        msg = f"Cleaned {cnt} stale/excluded job records."
+                    elif action == "status":
+                        cnt = clean_jobs_by_status(session, target_status)
+                        msg = f"Cleaned {cnt} jobs with status '{target_status}'."
+                    elif action == "all":
+                        res_dict = purge_all_database_data(session)
+                        msg = f"Purged test data across all tables: {res_dict}"
+                    else:
+                        msg = f"Unknown action: {action}"
+
+                    payload = {"status": "success", "message": msg}
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self._set_cors_headers()
+                    self.end_headers()
+                    self.wfile.write(json.dumps(payload).encode("utf-8"))
+                finally:
+                    session.close()
 
             elif url_path == "/api/jobs/update-status":
                 data = json.loads(body)

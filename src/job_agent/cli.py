@@ -15,6 +15,13 @@ from job_agent import __version__
 from job_agent.answer_service import add_answer, list_answers, suggest_answer
 from job_agent.application_tracker import list_tracked_jobs, mark_applied, record_parsed_job
 from job_agent.backup_service import create_backup, delete_job_record, purge_all_data, restore_backup
+from job_agent.cleanup_service import (
+    clean_duplicate_jobs,
+    clean_jobs_by_status,
+    clean_old_jobs,
+    clean_stale_or_excluded_jobs,
+    purge_all_database_data,
+)
 from job_agent.browser_capture import start_capture_server
 from job_agent.config import (
     ensure_runtime_dirs,
@@ -929,6 +936,47 @@ def purge_data_cmd() -> None:
 
         count = purge_all_data(session)
         console.print(f"[bold red]Purged {count} records across database.[/bold red]")
+    finally:
+        session.close()
+
+
+@app.command("cleanup")
+def cleanup_cmd(
+    action: str = typer.Option("duplicates", "--action", help="Cleanup action: duplicates, stale, status, old, or all"),
+    status: Optional[str] = typer.Option(None, "--status", help="Target status when action='status' (e.g. 'Saved', 'Reviewing')"),
+    days: int = typer.Option(30, "--days", help="Days threshold when action='old'"),
+    confirm: bool = typer.Option(False, "--confirm", help="Confirm deletion"),
+) -> None:
+    """Clean up test data, duplicates, stale/excluded jobs, or old records from database."""
+    _, SessionLocal = _init_context()
+    session = SessionLocal()
+    try:
+        act = action.lower()
+        if not confirm and act in ("all", "status", "old"):
+            if not typer.confirm(f"Are you sure you want to run cleanup action '{act}'?", default=False):
+                console.print("[yellow]Cleanup cancelled.[/yellow]")
+                return
+
+        if act == "duplicates":
+            cnt = clean_duplicate_jobs(session)
+            console.print(f"[bold green]Cleaned {cnt} duplicate job records.[/bold green]")
+        elif act in ("stale", "excluded"):
+            cnt = clean_stale_or_excluded_jobs(session)
+            console.print(f"[bold green]Cleaned {cnt} stale/excluded job records.[/bold green]")
+        elif act == "status":
+            if not status:
+                console.print("[bold red]Error: --status is required when action='status'.[/bold red]")
+                return
+            cnt = clean_jobs_by_status(session, status)
+            console.print(f"[bold green]Cleaned {cnt} jobs with status '{status}'.[/bold green]")
+        elif act == "old":
+            cnt = clean_old_jobs(session, days)
+            console.print(f"[bold green]Cleaned {cnt} jobs older than {days} days.[/bold green]")
+        elif act == "all":
+            res = purge_all_database_data(session)
+            console.print(f"[bold red]Purged test data across all tables: {res}[/bold red]")
+        else:
+            console.print(f"[bold red]Unknown cleanup action: '{action}'. Use duplicates, stale, status, old, or all.[/bold red]")
     finally:
         session.close()
 
