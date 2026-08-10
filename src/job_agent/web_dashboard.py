@@ -322,6 +322,34 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
             display: inline-block;
             animation: spin 1s infinite linear;
         }
+        #global-progress-wrapper {
+            position: sticky;
+            top: 0;
+            z-index: 1080;
+            display: none;
+            background: #eff6ff;
+            border-bottom: 2px solid #2563eb;
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.18);
+            padding: 0.85rem 1.25rem;
+        }
+        #global-progress-wrapper.is-visible {
+            display: block !important;
+        }
+        #global-progress-wrapper .progress {
+            height: 14px;
+            border-radius: 8px;
+            background-color: #dbeafe;
+        }
+        #global-progress-status {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: #1e3a8a;
+        }
+        #global-progress-percent {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #1d4ed8;
+        }
     </style>
 </head>
 <body>
@@ -338,14 +366,14 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
     </div>
 </header>
 
-<!-- Global Event Progress Bar Container -->
-<div id="global-progress-wrapper" class="bg-white border-bottom shadow-sm px-4 py-2" style="display: none; transition: all 0.3s ease;">
-    <div class="d-flex justify-content-between align-items-center mb-1">
-        <span class="fw-semibold text-dark fs-7" id="global-progress-status"><i class="bi bi-arrow-repeat spin text-primary me-1"></i> Processing event...</span>
-        <span class="fw-bold text-primary fs-7" id="global-progress-percent">0%</span>
+<!-- Global Event Progress Bar Container (sticky, always visible while an action runs) -->
+<div id="global-progress-wrapper" aria-live="polite" aria-busy="false">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <span id="global-progress-status"><i class="bi bi-arrow-repeat spin text-primary me-1"></i> Processing event...</span>
+        <span id="global-progress-percent">0%</span>
     </div>
-    <div class="progress" style="height: 10px; border-radius: 6px; background-color: #e2e8f0;">
-        <div id="global-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" role="progressbar" style="width: 0%; transition: width 0.2s ease;"></div>
+    <div class="progress">
+        <div id="global-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" role="progressbar" style="width: 0%; transition: width 0.25s ease;" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
     </div>
 </div>
 
@@ -873,6 +901,9 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
     let metadataCommands = [];
     let currentReviewJobId = null;
     let progressInterval = null;
+    let progressHideTimer = null;
+    let progressStartedAt = 0;
+    const PROGRESS_MIN_VISIBLE_MS = 1500;
 
     const KANBAN_STATUSES = ["Imported", "Analyzed", "Resume draft ready", "Awaiting review", "Approved", "Applied", "Interviewing", "Offer", "Rejected"];
     const TOP_10 = ["indeed", "linkedin", "glassdoor", "monster", "ziprecruiter", "careerbuilder", "simplyhired", "dice", "wellfound", "google_jobs"];
@@ -882,21 +913,31 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
         const statusEl = document.getElementById('global-progress-status');
         const percentEl = document.getElementById('global-progress-percent');
         const barEl = document.getElementById('global-progress-bar');
+        if (!wrapper || !statusEl || !percentEl || !barEl) {
+            console.warn('Progress bar elements missing from page');
+            return;
+        }
 
         if (progressInterval) clearInterval(progressInterval);
+        if (progressHideTimer) clearTimeout(progressHideTimer);
 
-        wrapper.style.display = 'block';
+        progressStartedAt = Date.now();
+        wrapper.classList.add('is-visible');
+        wrapper.setAttribute('aria-busy', 'true');
         statusEl.innerHTML = `<i class="bi bi-arrow-repeat spin text-primary me-1"></i> ${statusText}`;
         percentEl.innerText = `${Math.round(initialPercent)}%`;
         barEl.style.width = `${initialPercent}%`;
+        barEl.setAttribute('aria-valuenow', String(Math.round(initialPercent)));
         barEl.className = `progress-bar progress-bar-striped progress-bar-animated ${colorClass}`;
 
         let current = initialPercent;
         progressInterval = setInterval(() => {
             if (current < 92) {
                 current += (92 - current) * 0.10 + 0.5;
-                percentEl.innerText = `${Math.round(current)}%`;
+                const shown = Math.round(current);
+                percentEl.innerText = `${shown}%`;
                 barEl.style.width = `${current}%`;
+                barEl.setAttribute('aria-valuenow', String(shown));
             }
         }, 200);
     }
@@ -905,32 +946,42 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
         const statusEl = document.getElementById('global-progress-status');
         const percentEl = document.getElementById('global-progress-percent');
         const barEl = document.getElementById('global-progress-bar');
+        if (!statusEl || !percentEl || !barEl) return;
 
         if (statusText) statusEl.innerHTML = `<i class="bi bi-arrow-repeat spin text-primary me-1"></i> ${statusText}`;
         if (percent !== undefined) {
             percentEl.innerText = `${Math.round(percent)}%`;
             barEl.style.width = `${percent}%`;
+            barEl.setAttribute('aria-valuenow', String(Math.round(percent)));
         }
     }
 
     function finishProgress(statusText = 'Completed!', isSuccess = true, autoHideMs = 2200) {
         if (progressInterval) clearInterval(progressInterval);
+        if (progressHideTimer) clearTimeout(progressHideTimer);
 
         const wrapper = document.getElementById('global-progress-wrapper');
         const statusEl = document.getElementById('global-progress-status');
         const percentEl = document.getElementById('global-progress-percent');
         const barEl = document.getElementById('global-progress-bar');
+        if (!wrapper || !statusEl || !percentEl || !barEl) return;
 
         const icon = isSuccess ? '<i class="bi bi-check-circle-fill text-success me-1"></i>' : '<i class="bi bi-exclamation-triangle-fill text-danger me-1"></i>';
+        wrapper.classList.add('is-visible');
+        wrapper.setAttribute('aria-busy', 'false');
         statusEl.innerHTML = `${icon} ${statusText}`;
         percentEl.innerText = isSuccess ? '100%' : 'Failed';
         barEl.style.width = '100%';
+        barEl.setAttribute('aria-valuenow', isSuccess ? '100' : '0');
         barEl.className = `progress-bar ${isSuccess ? 'bg-success' : 'bg-danger'}`;
 
-        setTimeout(() => {
-            wrapper.style.display = 'none';
+        const elapsed = Date.now() - (progressStartedAt || Date.now());
+        const waitMs = Math.max(autoHideMs, PROGRESS_MIN_VISIBLE_MS - elapsed);
+        progressHideTimer = setTimeout(() => {
+            wrapper.classList.remove('is-visible');
             barEl.style.width = '0%';
-        }, autoHideMs);
+            barEl.setAttribute('aria-valuenow', '0');
+        }, waitMs);
     }
 
     document.addEventListener("DOMContentLoaded", function() {

@@ -22,6 +22,10 @@ def test_get_index_html(web_server):
         html = resp.read().decode("utf-8")
         assert "Job Search Agent Web Console" in html
         assert "CLI Command Cheat Sheet" in html
+        assert 'id="global-progress-wrapper"' in html
+        assert 'id="global-progress-bar"' in html
+        assert "function showProgress" in html
+        assert "function finishProgress" in html
         assert "Profile &amp; Skills Editor" in html or "Profile & Skills Editor" in html
         assert "Optional &amp; Synced with <code>config.yaml</code>" in html or "Optional & Synced with" in html
         assert 'id="preview-titles"' in html
