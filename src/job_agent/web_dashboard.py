@@ -645,45 +645,151 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
         <!-- PROFILE & SKILLS EDITOR PANE -->
         <div class="tab-pane fade" id="profile-pane">
             <div class="card border-0 shadow-sm max-w-800 mx-auto">
-                <div class="card-header bg-white fw-bold py-3">
-                    <i class="bi bi-person-gear text-primary"></i> Edit Candidate Profile & Target Skills (config.yaml)
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <div>
+                        <h5 class="fw-bold mb-0 text-dark">
+                            <i class="bi bi-person-gear text-primary me-2"></i>Profile &amp; Skills Editor
+                        </h5>
+                        <div class="text-muted small mt-1">
+                            <i class="bi bi-info-circle me-1"></i> Optional candidate preferences used for job matching, scoring &amp; resume tailoring.
+                        </div>
+                    </div>
+                    <span class="badge bg-light text-primary border border-primary-subtle px-3 py-2 rounded-pill fs-6 fw-normal">
+                        <i class="bi bi-arrow-repeat text-success me-1"></i> Optional &amp; Synced with <code>config.yaml</code>
+                    </span>
                 </div>
                 <div class="card-body">
                     <form id="profile-editor-form" onsubmit="saveProfileForm(event)">
+                        <!-- Section: Target Job Titles & Experience -->
                         <div class="row g-3 mb-3">
-                            <div class="col-md-6">
-                                <label class="form-label fw-semibold">Target Job Titles (comma separated)</label>
-                                <input type="text" class="form-control" id="prof-titles">
+                            <div class="col-md-8">
+                                <label class="form-label fw-semibold" for="prof-titles">Target Job Titles (comma separated)</label>
+                                <input type="text" class="form-control" id="prof-titles" placeholder="e.g. Staff Software Engineer, Senior Developer, Tech Lead">
+                                <div class="input-group input-group-sm mt-1">
+                                    <input type="text" class="form-control" id="add-kw-titles-input" placeholder="Add keyword title..." onkeydown="if(event.key==='Enter'){event.preventDefault();addKeywordFromInput('prof-titles', 'add-kw-titles-input');}">
+                                    <button class="btn btn-outline-primary" type="button" onclick="addKeywordFromInput('prof-titles', 'add-kw-titles-input')"><i class="bi bi-plus-lg"></i> Add Title Keyword</button>
+                                </div>
+                                <small class="text-muted d-block mt-1" id="preview-titles">Config.yaml current: (loading...)</small>
                             </div>
-                            <div class="col-md-6">
-                                <label class="form-label fw-semibold">Years of Experience</label>
-                                <input type="number" class="form-control" id="prof-exp">
+                            <div class="col-md-4">
+                                <label class="form-label fw-semibold" for="prof-exp">Years of Experience</label>
+                                <input type="number" class="form-control" id="prof-exp" min="0" placeholder="e.g. 8">
+                                <small class="text-muted d-block mt-1" id="preview-exp">Config.yaml current: (loading...)</small>
                             </div>
                         </div>
 
+                        <!-- Section: Skills -->
                         <div class="row g-3 mb-3">
                             <div class="col-md-6">
-                                <label class="form-label fw-semibold">Required Skills (comma separated)</label>
-                                <textarea class="form-control" id="prof-req-skills" rows="3"></textarea>
+                                <label class="form-label fw-semibold" for="prof-req-skills">Required Skills (comma separated)</label>
+                                <textarea class="form-control" id="prof-req-skills" rows="3" placeholder="e.g. Python, Docker, PostgreSQL, AWS"></textarea>
+                                <div class="input-group input-group-sm mt-1">
+                                    <input type="text" class="form-control" id="add-kw-req-skills-input" placeholder="Add required skill keyword..." onkeydown="if(event.key==='Enter'){event.preventDefault();addKeywordFromInput('prof-req-skills', 'add-kw-req-skills-input');}">
+                                    <button class="btn btn-outline-primary" type="button" onclick="addKeywordFromInput('prof-req-skills', 'add-kw-req-skills-input')"><i class="bi bi-plus-lg"></i> Add Skill Keyword</button>
+                                </div>
+                                <small class="text-muted d-block mt-1" id="preview-req-skills">Config.yaml current: (loading...)</small>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label fw-semibold">Preferred Skills (comma separated)</label>
-                                <textarea class="form-control" id="prof-pref-skills" rows="3"></textarea>
+                                <label class="form-label fw-semibold" for="prof-pref-skills">Preferred Skills (comma separated)</label>
+                                <textarea class="form-control" id="prof-pref-skills" rows="3" placeholder="e.g. Kubernetes, Kafka, GraphQL, React"></textarea>
+                                <div class="input-group input-group-sm mt-1">
+                                    <input type="text" class="form-control" id="add-kw-pref-skills-input" placeholder="Add preferred skill keyword..." onkeydown="if(event.key==='Enter'){event.preventDefault();addKeywordFromInput('prof-pref-skills', 'add-kw-pref-skills-input');}">
+                                    <button class="btn btn-outline-primary" type="button" onclick="addKeywordFromInput('prof-pref-skills', 'add-kw-pref-skills-input')"><i class="bi bi-plus-lg"></i> Add Skill Keyword</button>
+                                </div>
+                                <small class="text-muted d-block mt-1" id="preview-pref-skills">Config.yaml current: (loading...)</small>
                             </div>
                         </div>
 
+                        <!-- Section: Location & Salary -->
                         <div class="row g-3 mb-3">
                             <div class="col-md-6">
-                                <label class="form-label fw-semibold">Target Locations (comma separated)</label>
-                                <input type="text" class="form-control" id="prof-locations">
+                                <label class="form-label fw-semibold" for="prof-locations">Target Locations (comma separated)</label>
+                                <input type="text" class="form-control" id="prof-locations" placeholder="e.g. Remote, San Francisco, CA, Austin, TX">
+                                <div class="input-group input-group-sm mt-1">
+                                    <input type="text" class="form-control" id="add-kw-locations-input" placeholder="Add location keyword..." onkeydown="if(event.key==='Enter'){event.preventDefault();addKeywordFromInput('prof-locations', 'add-kw-locations-input');}">
+                                    <button class="btn btn-outline-primary" type="button" onclick="addKeywordFromInput('prof-locations', 'add-kw-locations-input')"><i class="bi bi-plus-lg"></i> Add Location Keyword</button>
+                                </div>
+                                <small class="text-muted d-block mt-1" id="preview-locations">Config.yaml current: (loading...)</small>
                             </div>
-                            <div class="col-md-6">
-                                <label class="form-label fw-semibold">Target Minimum Salary (USD)</label>
-                                <input type="number" class="form-control" id="prof-salary">
+                            <div class="col-md-3">
+                                <label class="form-label fw-semibold" for="prof-salary">Target Minimum Salary (USD)</label>
+                                <input type="number" class="form-control" id="prof-salary" placeholder="e.g. 130000" step="1000">
+                                <div class="d-flex gap-1 mt-1 flex-wrap">
+                                    <button type="button" class="btn btn-sm btn-light border py-0 px-2 text-muted" onclick="setSalaryValue('prof-salary', 100000)">$100k</button>
+                                    <button type="button" class="btn btn-sm btn-light border py-0 px-2 text-muted" onclick="setSalaryValue('prof-salary', 130000)">$130k</button>
+                                    <button type="button" class="btn btn-sm btn-light border py-0 px-2 text-muted" onclick="setSalaryValue('prof-salary', 150000)">$150k</button>
+                                </div>
+                                <small class="text-muted d-block mt-1" id="preview-salary">Config.yaml current: (loading...)</small>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label fw-semibold" for="prof-salary-max">Target Maximum Salary (USD)</label>
+                                <input type="number" class="form-control" id="prof-salary-max" placeholder="e.g. 180000" step="1000">
+                                <div class="d-flex gap-1 mt-1 flex-wrap">
+                                    <button type="button" class="btn btn-sm btn-light border py-0 px-2 text-muted" onclick="setSalaryValue('prof-salary-max', 180000)">$180k</button>
+                                    <button type="button" class="btn btn-sm btn-light border py-0 px-2 text-muted" onclick="setSalaryValue('prof-salary-max', 200000)">$200k</button>
+                                    <button type="button" class="btn btn-sm btn-light border py-0 px-2 text-muted" onclick="setSalaryValue('prof-salary-max', 250000)">$250k</button>
+                                </div>
+                                <small class="text-muted d-block mt-1" id="preview-salary-max">Config.yaml current: (loading...)</small>
                             </div>
                         </div>
 
-                        <button type="submit" class="btn btn-primary"><i class="bi bi-save-fill"></i> Save Profile Configuration</button>
+                        <!-- Section: Additional Target Fields & Work Preferences -->
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold" for="prof-industries">Target Industries (comma separated)</label>
+                                <input type="text" class="form-control" id="prof-industries" placeholder="e.g. Financial Services, Fintech, SaaS">
+                                <div class="input-group input-group-sm mt-1">
+                                    <input type="text" class="form-control" id="add-kw-industries-input" placeholder="Add industry keyword..." onkeydown="if(event.key==='Enter'){event.preventDefault();addKeywordFromInput('prof-industries', 'add-kw-industries-input');}">
+                                    <button class="btn btn-outline-primary" type="button" onclick="addKeywordFromInput('prof-industries', 'add-kw-industries-input')"><i class="bi bi-plus-lg"></i> Add Industry Keyword</button>
+                                </div>
+                                <small class="text-muted d-block mt-1" id="preview-industries">Config.yaml current: (loading...)</small>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold" for="prof-work-modes">Work Modes (comma separated)</label>
+                                <input type="text" class="form-control" id="prof-work-modes" placeholder="e.g. remote, hybrid, on-site">
+                                <div class="d-flex gap-1 mt-1 flex-wrap">
+                                    <button type="button" class="btn btn-sm btn-light border py-0 px-2 text-muted" onclick="addKeyword('prof-work-modes', 'remote')">+ remote</button>
+                                    <button type="button" class="btn btn-sm btn-light border py-0 px-2 text-muted" onclick="addKeyword('prof-work-modes', 'hybrid')">+ hybrid</button>
+                                    <button type="button" class="btn btn-sm btn-light border py-0 px-2 text-muted" onclick="addKeyword('prof-work-modes', 'on-site')">+ on-site</button>
+                                </div>
+                                <small class="text-muted d-block mt-1" id="preview-work-modes">Config.yaml current: (loading...)</small>
+                            </div>
+                        </div>
+
+                        <!-- Section: Exclusions -->
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label fw-semibold" for="prof-excluded-companies">Excluded Companies (comma separated)</label>
+                                <input type="text" class="form-control" id="prof-excluded-companies" placeholder="e.g. SpamCorp, Bad Company">
+                                <div class="input-group input-group-sm mt-1">
+                                    <input type="text" class="form-control" id="add-kw-ex-comp-input" placeholder="Exclude company..." onkeydown="if(event.key==='Enter'){event.preventDefault();addKeywordFromInput('prof-excluded-companies', 'add-kw-ex-comp-input');}">
+                                    <button class="btn btn-outline-secondary" type="button" onclick="addKeywordFromInput('prof-excluded-companies', 'add-kw-ex-comp-input')"><i class="bi bi-plus-lg"></i> Exclude</button>
+                                </div>
+                                <small class="text-muted d-block mt-1" id="preview-excluded-companies">Config.yaml current: (loading...)</small>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-semibold" for="prof-excluded-titles">Excluded Titles (comma separated)</label>
+                                <input type="text" class="form-control" id="prof-excluded-titles" placeholder="e.g. intern, unpaid">
+                                <div class="input-group input-group-sm mt-1">
+                                    <input type="text" class="form-control" id="add-kw-ex-titles-input" placeholder="Exclude title..." onkeydown="if(event.key==='Enter'){event.preventDefault();addKeywordFromInput('prof-excluded-titles', 'add-kw-ex-titles-input');}">
+                                    <button class="btn btn-outline-secondary" type="button" onclick="addKeywordFromInput('prof-excluded-titles', 'add-kw-ex-titles-input')"><i class="bi bi-plus-lg"></i> Exclude</button>
+                                </div>
+                                <small class="text-muted d-block mt-1" id="preview-excluded-titles">Config.yaml current: (loading...)</small>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-semibold" for="prof-excluded-skills">Excluded Skills (comma separated)</label>
+                                <input type="text" class="form-control" id="prof-excluded-skills" placeholder="e.g. PHP, legacy COBOL">
+                                <div class="input-group input-group-sm mt-1">
+                                    <input type="text" class="form-control" id="add-kw-ex-skills-input" placeholder="Exclude skill..." onkeydown="if(event.key==='Enter'){event.preventDefault();addKeywordFromInput('prof-excluded-skills', 'add-kw-ex-skills-input');}">
+                                    <button class="btn btn-outline-secondary" type="button" onclick="addKeywordFromInput('prof-excluded-skills', 'add-kw-ex-skills-input')"><i class="bi bi-plus-lg"></i> Exclude</button>
+                                </div>
+                                <small class="text-muted d-block mt-1" id="preview-excluded-skills">Config.yaml current: (loading...)</small>
+                            </div>
+                        </div>
+
+                        <div class="pt-2">
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-save-fill me-1"></i> Save Profile Configuration to config.yaml</button>
+                        </div>
                     </form>
                 </div>
             </div>
@@ -850,9 +956,12 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
 
     function loadAllData() {
         showProgress('Refreshing dashboard statistics, job list, and activity feed...', 20);
-        Promise.all([fetchStats(), fetchJobs(), fetchActivityFeed()])
+        return Promise.all([fetchStats(), fetchJobs(), fetchActivityFeed()])
             .then(() => finishProgress('Dashboard refreshed successfully', true, 1200))
-            .catch(() => finishProgress('Refresh complete', true, 1200));
+            .catch((err) => {
+                console.error("Error refreshing dashboard data:", err);
+                finishProgress('Refresh complete', true, 1200);
+            });
     }
 
     function switchTab(tabId) {
@@ -861,44 +970,73 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
     }
 
     function fetchStats() {
-        fetch('/api/stats')
-            .then(res => res.json())
+        return fetch('/api/stats')
+            .then(res => {
+                if (!res.ok) throw new Error("HTTP error " + res.status);
+                return res.json();
+            })
             .then(data => {
+                data = data || {};
+                const counts = data.status_counts || {};
                 document.getElementById('stat-total-jobs').innerText = data.total_jobs || 0;
-                document.getElementById('stat-review-count').innerText = data.status_counts['Awaiting review'] || data.status_counts['Imported'] || 0;
-                document.getElementById('stat-drafts-count').innerText = data.status_counts['Resume draft ready'] || 0;
-                document.getElementById('stat-applied-count').innerText = data.status_counts['Applied'] || data.status_counts['Approved'] || 0;
+                document.getElementById('stat-review-count').innerText = counts['Awaiting review'] || counts['Imported'] || 0;
+                document.getElementById('stat-drafts-count').innerText = counts['Resume draft ready'] || counts['Draft ready'] || 0;
+                document.getElementById('stat-applied-count').innerText = counts['Applied'] || counts['Approved'] || 0;
 
                 // High score table
                 const hsBody = document.querySelector('#high-score-table tbody');
-                hsBody.innerHTML = '';
-                if (!data.high_score_jobs || data.high_score_jobs.length === 0) {
-                    hsBody.innerHTML = '<tr><td colspan="6" class="text-center py-3 text-muted">No high-score jobs. Click "Find Jobs Now".</td></tr>';
-                } else {
-                    data.high_score_jobs.slice(0, 8).forEach(j => {
-                        hsBody.innerHTML += `
-                            <tr>
-                                <td><strong>#${j.id}</strong></td>
-                                <td><span class="badge bg-success badge-score">${Math.round(j.match_score)}</span></td>
-                                <td><strong class="text-primary">${escapeHtml(j.title)}</strong></td>
-                                <td>${escapeHtml(j.company)}</td>
-                                <td><small class="text-muted">${j.source_platform}</small></td>
-                                <td>
-                                    <button class="btn btn-xs btn-outline-primary py-0 px-2" onclick="createDraftForJob('${j.id}')">Tailor Draft</button>
-                                </td>
-                            </tr>`;
-                    });
+                if (hsBody) {
+                    hsBody.innerHTML = '';
+                    const highScores = data.high_score_jobs || [];
+                    if (highScores.length === 0) {
+                        hsBody.innerHTML = '<tr><td colspan="6" class="text-center py-3 text-muted">No high-score jobs. Click "Find Jobs Now".</td></tr>';
+                    } else {
+                        highScores.slice(0, 8).forEach(j => {
+                            const score = j.match_score != null ? Math.round(j.match_score) : 0;
+                            const title = escapeHtml(j.title || 'Untitled Job');
+                            const company = escapeHtml(j.company || 'Unknown Company');
+                            const platform = escapeHtml(j.source_platform || 'N/A');
+                            hsBody.innerHTML += `
+                                <tr>
+                                    <td><strong>#${j.id}</strong></td>
+                                    <td><span class="badge bg-success badge-score">${score}</span></td>
+                                    <td><strong class="text-primary">${title}</strong></td>
+                                    <td>${company}</td>
+                                    <td><small class="text-muted">${platform}</small></td>
+                                    <td>
+                                        <button class="btn btn-xs btn-outline-primary py-0 px-2" onclick="createDraftForJob('${j.id}')">Tailor Draft</button>
+                                    </td>
+                                </tr>`;
+                        });
+                    }
+                }
+            })
+            .catch(err => {
+                console.error("Error in fetchStats:", err);
+                const hsBody = document.querySelector('#high-score-table tbody');
+                if (hsBody) {
+                    hsBody.innerHTML = '<tr><td colspan="6" class="text-center py-3 text-danger">Failed to load high score jobs.</td></tr>';
                 }
             });
     }
 
     function fetchJobs() {
-        fetch('/api/jobs')
-            .then(res => res.json())
+        return fetch('/api/jobs')
+            .then(res => {
+                if (!res.ok) throw new Error("HTTP error " + res.status);
+                return res.json();
+            })
             .then(jobs => {
                 renderAllJobsTable(jobs);
                 renderKanbanBoard(jobs);
                 populateReviewJobSelect(jobs);
+            })
+            .catch(err => {
+                console.error("Error in fetchJobs:", err);
+                const tbody = document.querySelector('#all-jobs-table tbody');
+                if (tbody) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-danger">Failed to load job listings.</td></tr>';
+                }
             });
     }
 
@@ -970,12 +1108,16 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
     }
 
     function fetchActivityFeed() {
-        fetch('/api/activities')
-            .then(res => res.json())
+        return fetch('/api/activities')
+            .then(res => {
+                if (!res.ok) throw new Error("HTTP error " + res.status);
+                return res.json();
+            })
             .then(acts => {
                 const list = document.getElementById('activity-feed-list');
+                if (!list) return;
                 list.innerHTML = '';
-                if (!acts || acts.length === 0) {
+                if (!acts || !Array.isArray(acts) || acts.length === 0) {
                     list.innerHTML = '<li class="list-group-item text-muted text-center py-3">No activity logged yet.</li>';
                     return;
                 }
@@ -983,12 +1125,19 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
                     list.innerHTML += `
                         <li class="list-group-item py-2">
                             <div class="d-flex justify-content-between">
-                                <strong class="text-dark">${escapeHtml(a.title)}</strong>
+                                <strong class="text-dark">${escapeHtml(a.title || '')}</strong>
                                 <small class="text-muted fs-8">${a.created_at || ''}</small>
                             </div>
                             <small class="text-muted">${escapeHtml(a.description || '')}</small>
                         </li>`;
                 });
+            })
+            .catch(err => {
+                console.error("Error in fetchActivityFeed:", err);
+                const list = document.getElementById('activity-feed-list');
+                if (list) {
+                    list.innerHTML = '<li class="list-group-item text-danger text-center py-3">Failed to load activity feed.</li>';
+                }
             });
     }
 
@@ -1254,29 +1403,102 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
         });
     }
 
+    function addKeyword(targetInputId, keyword) {
+        if (!keyword || !keyword.trim()) return;
+        const input = document.getElementById(targetInputId);
+        if (!input) return;
+        const cleanKw = keyword.trim();
+        const existing = input.value.split(',').map(s => s.trim()).filter(Boolean);
+        if (!existing.some(k => k.toLowerCase() === cleanKw.toLowerCase())) {
+            existing.push(cleanKw);
+            input.value = existing.join(', ');
+        }
+    }
+
+    function addKeywordFromInput(targetInputId, sourceInputId) {
+        const srcInput = document.getElementById(sourceInputId);
+        if (!srcInput) return;
+        const val = srcInput.value;
+        if (val && val.trim()) {
+            addKeyword(targetInputId, val);
+            srcInput.value = '';
+        }
+    }
+
+    function setSalaryValue(targetInputId, amount) {
+        const input = document.getElementById(targetInputId);
+        if (input) {
+            input.value = amount;
+        }
+    }
+
+    function setPreviewText(elementId, val) {
+        const el = document.getElementById(elementId);
+        if (!el) return;
+        let formatted = 'None set';
+        if (Array.isArray(val)) {
+            formatted = val.length > 0 ? val.join(', ') : 'None set';
+        } else if (val !== null && val !== undefined && val !== '') {
+            formatted = String(val);
+        }
+        el.innerHTML = 'Config.yaml current: ' + escapeHtml(formatted);
+    }
+
     function fetchProfile() {
         fetch('/api/profile')
             .then(res => res.json())
             .then(p => {
-                document.getElementById('prof-titles').value = (p.target_titles || []).join(', ');
-                document.getElementById('prof-exp').value = p.years_experience || 0;
-                document.getElementById('prof-req-skills').value = (p.required_skills || []).join(', ');
-                document.getElementById('prof-pref-skills').value = (p.preferred_skills || []).join(', ');
-                document.getElementById('prof-locations').value = (p.locations || []).join(', ');
-                document.getElementById('prof-salary').value = p.salary_min || 120000;
+                if (document.getElementById('prof-titles')) document.getElementById('prof-titles').value = (p.target_titles || []).join(', ');
+                if (document.getElementById('prof-exp')) document.getElementById('prof-exp').value = (p.years_experience !== undefined && p.years_experience !== null) ? p.years_experience : 0;
+                if (document.getElementById('prof-req-skills')) document.getElementById('prof-req-skills').value = (p.required_skills || []).join(', ');
+                if (document.getElementById('prof-pref-skills')) document.getElementById('prof-pref-skills').value = (p.preferred_skills || []).join(', ');
+                if (document.getElementById('prof-locations')) document.getElementById('prof-locations').value = (p.locations || []).join(', ');
+                if (document.getElementById('prof-salary')) document.getElementById('prof-salary').value = (p.salary_min !== null && p.salary_min !== undefined) ? p.salary_min : '';
+                if (document.getElementById('prof-salary-max')) document.getElementById('prof-salary-max').value = (p.salary_max !== null && p.salary_max !== undefined) ? p.salary_max : '';
+                if (document.getElementById('prof-industries')) document.getElementById('prof-industries').value = (p.industries || []).join(', ');
+                if (document.getElementById('prof-work-modes')) document.getElementById('prof-work-modes').value = (p.work_modes || []).join(', ');
+                if (document.getElementById('prof-excluded-companies')) document.getElementById('prof-excluded-companies').value = (p.excluded_companies || []).join(', ');
+                if (document.getElementById('prof-excluded-titles')) document.getElementById('prof-excluded-titles').value = (p.excluded_titles || []).join(', ');
+                if (document.getElementById('prof-excluded-skills')) document.getElementById('prof-excluded-skills').value = (p.excluded_skills || []).join(', ');
+
+                setPreviewText('preview-titles', p.target_titles);
+                setPreviewText('preview-exp', p.years_experience !== undefined && p.years_experience !== null ? p.years_experience + ' years' : null);
+                setPreviewText('preview-req-skills', p.required_skills);
+                setPreviewText('preview-pref-skills', p.preferred_skills);
+                setPreviewText('preview-locations', p.locations);
+                setPreviewText('preview-salary', p.salary_min ? '$' + Number(p.salary_min).toLocaleString() : null);
+                setPreviewText('preview-salary-max', p.salary_max ? '$' + Number(p.salary_max).toLocaleString() : null);
+                setPreviewText('preview-industries', p.industries);
+                setPreviewText('preview-work-modes', p.work_modes);
+                setPreviewText('preview-excluded-companies', p.excluded_companies);
+                setPreviewText('preview-excluded-titles', p.excluded_titles);
+                setPreviewText('preview-excluded-skills', p.excluded_skills);
             });
     }
 
     function saveProfileForm(e) {
         e.preventDefault();
         showProgress('Saving Candidate Profile to config.yaml...', 25);
+        const getInputValue = id => document.getElementById(id) ? document.getElementById(id).value : '';
+        const getListValue = id => getInputValue(id).split(',').map(s => s.trim()).filter(Boolean);
+        const getIntVal = id => {
+            const v = getInputValue(id);
+            return v !== '' && !isNaN(parseInt(v)) ? parseInt(v) : null;
+        };
+
         const payload = {
-            target_titles: document.getElementById('prof-titles').value.split(',').map(s => s.trim()).filter(Boolean),
-            years_experience: parseInt(document.getElementById('prof-exp').value || 0),
-            required_skills: document.getElementById('prof-req-skills').value.split(',').map(s => s.trim()).filter(Boolean),
-            preferred_skills: document.getElementById('prof-pref-skills').value.split(',').map(s => s.trim()).filter(Boolean),
-            locations: document.getElementById('prof-locations').value.split(',').map(s => s.trim()).filter(Boolean),
-            salary_min: parseInt(document.getElementById('prof-salary').value || 0),
+            target_titles: getListValue('prof-titles'),
+            years_experience: getIntVal('prof-exp') || 0,
+            required_skills: getListValue('prof-req-skills'),
+            preferred_skills: getListValue('prof-pref-skills'),
+            locations: getListValue('prof-locations'),
+            salary_min: getIntVal('prof-salary'),
+            salary_max: getIntVal('prof-salary-max'),
+            industries: getListValue('prof-industries'),
+            work_modes: getListValue('prof-work-modes'),
+            excluded_companies: getListValue('prof-excluded-companies'),
+            excluded_titles: getListValue('prof-excluded-titles'),
+            excluded_skills: getListValue('prof-excluded-skills'),
         };
 
         fetch('/api/profile', {
@@ -1288,7 +1510,8 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
         .then(data => {
             finishProgress('Candidate Profile Saved to config.yaml!', true);
             alert('✅ Profile saved to config.yaml!');
-            loadAllData();
+            fetchProfile();
+            if (typeof loadAllData === 'function') loadAllData();
         })
         .catch(err => {
             finishProgress('Failed saving profile', false);
@@ -1722,14 +1945,7 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
 
             elif url_path == "/api/profile":
                 profile = load_candidate_profile()
-                payload = {
-                    "target_titles": profile.target_titles,
-                    "required_skills": profile.required_skills,
-                    "preferred_skills": profile.preferred_skills,
-                    "years_experience": profile.years_experience,
-                    "locations": profile.locations,
-                    "salary_min": profile.salary_min,
-                }
+                payload = profile.to_dict()
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self._set_cors_headers()
@@ -1992,23 +2208,40 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
             elif url_path == "/api/profile":
                 data = json.loads(body)
                 current_p = load_candidate_profile()
+
+                def _get_list(key: str, default: list[str]) -> list[str]:
+                    if key in data and isinstance(data[key], list):
+                        return [str(x).strip() for x in data[key] if str(x).strip()]
+                    return default
+
+                def _get_int(key: str, default: int | None) -> int | None:
+                    if key in data:
+                        val = data[key]
+                        if val is None or val == "":
+                            return None
+                        try:
+                            return int(val)
+                        except (ValueError, TypeError):
+                            return default
+                    return default
+
                 updated_p = CandidateProfile(
-                    target_titles=data.get("target_titles", current_p.target_titles),
-                    industries=current_p.industries,
-                    required_skills=data.get("required_skills", current_p.required_skills),
-                    preferred_skills=data.get("preferred_skills", current_p.preferred_skills),
-                    years_experience=int(data.get("years_experience", current_p.years_experience)),
-                    locations=data.get("locations", current_p.locations),
-                    work_modes=current_p.work_modes,
-                    salary_min=data.get("salary_min", current_p.salary_min),
-                    salary_max=current_p.salary_max,
-                    salary_currency=current_p.salary_currency,
-                    employment_types=current_p.employment_types,
-                    work_authorization=current_p.work_authorization,
-                    excluded_companies=current_p.excluded_companies,
-                    excluded_titles=current_p.excluded_titles,
-                    excluded_skills=current_p.excluded_skills,
-                    excluded_locations=current_p.excluded_locations,
+                    target_titles=_get_list("target_titles", current_p.target_titles),
+                    industries=_get_list("industries", current_p.industries),
+                    required_skills=_get_list("required_skills", current_p.required_skills),
+                    preferred_skills=_get_list("preferred_skills", current_p.preferred_skills),
+                    years_experience=_get_int("years_experience", current_p.years_experience) or 0,
+                    locations=_get_list("locations", current_p.locations),
+                    work_modes=_get_list("work_modes", current_p.work_modes),
+                    salary_min=_get_int("salary_min", current_p.salary_min),
+                    salary_max=_get_int("salary_max", current_p.salary_max),
+                    salary_currency=str(data.get("salary_currency", current_p.salary_currency)),
+                    employment_types=_get_list("employment_types", current_p.employment_types),
+                    work_authorization=data.get("work_authorization", current_p.work_authorization),
+                    excluded_companies=_get_list("excluded_companies", current_p.excluded_companies),
+                    excluded_titles=_get_list("excluded_titles", current_p.excluded_titles),
+                    excluded_skills=_get_list("excluded_skills", current_p.excluded_skills),
+                    excluded_locations=_get_list("excluded_locations", current_p.excluded_locations),
                     master_resume_path=current_p.master_resume_path,
                     master_resumes=current_p.master_resumes,
                     cover_letter_template_path=current_p.cover_letter_template_path,
@@ -2075,8 +2308,23 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
             except Exception:
                 pass
 
+    def send_error(self, code: int, message: str | None = None, explain: str | None = None) -> None:
+        try:
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self._set_cors_headers()
+            self.end_headers()
+            err_payload = json.dumps({"error": message or "Error", "code": code})
+            self.wfile.write(err_payload.encode("utf-8"))
+        except Exception:
+            super().send_error(code, message, explain)
+
     def log_message(self, format: str, *args: Any) -> None:
-        pass  # Suppress default HTTP logging noise
+        try:
+            msg = format % args if args else format
+            logger.info("%s - %s", self.address_string(), msg)
+        except Exception:
+            logger.info("%s - %s", self.address_string(), format)
 
 
 def start_web_dashboard_server(host: str = "127.0.0.1", port: int = 8000) -> HTTPServer:

@@ -43,6 +43,8 @@ def test_get_api_stats(web_server):
         data = json.loads(resp.read().decode("utf-8"))
         assert "total_jobs" in data
         assert "status_counts" in data
+        assert "high_score_jobs" in data
+        assert isinstance(data["high_score_jobs"], list)
 
 
 def test_get_api_jobs(web_server):
