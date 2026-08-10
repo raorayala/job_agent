@@ -1,9 +1,11 @@
-"""Normalize text/URLs and detect duplicate job listings."""
+"""Normalize text, URLs, company/job titles, and detect duplicate job listings."""
 
 from __future__ import annotations
 
 import re
 from difflib import SequenceMatcher
+from functools import lru_cache
+from typing import Sequence
 from urllib.parse import parse_qs, urlparse, urlunparse
 
 from sqlalchemy import select
@@ -12,19 +14,52 @@ from sqlalchemy.orm import Session
 from job_agent.database import JobRecord
 from job_agent.models import DuplicateCheckResult, ParsedJob
 
+# Pre-compiled regular expressions for performance optimization
+_RE_WHITESPACE = re.compile(r"\s+")
+_RE_TITLE_NOISE = re.compile(
+    r"\b(sr\.?|senior|jr\.?|junior|lead|principal|staff)\b", re.IGNORECASE
+)
+_COMPANY_SUFFIXES: tuple[str, ...] = (
+    " inc",
+    " inc.",
+    " llc",
+    " ltd",
+    " corp",
+    " corporation",
+    " co",
+    " co.",
+    " company",
+    " tech",
+    " technologies",
+    " global",
+)
+
 
 def normalize_text(value: str | None) -> str:
-    """Lowercase and condense whitespace."""
+    """
+    Lowercase and condense whitespace in input text.
+
+    Args:
+        value: Input string to normalize.
+
+    Returns:
+        Cleaned, lowercased string with collapsed spaces.
+    """
     if not value:
         return ""
-    cleaned = re.sub(r"\s+", " ", value.strip().lower())
-    return cleaned
+    return _RE_WHITESPACE.sub(" ", value.strip().lower())
 
 
 def normalize_url(url: str) -> str:
     """
-    Normalize URLs by stripping tracking parameters, trailing slashes,
+    Normalize URLs by stripping tracking parameters and trailing slashes,
     while preserving identifying query parameters (like jk= for Indeed).
+
+    Args:
+        url: Raw web URL or internal URI string.
+
+    Returns:
+        Canonicalized URL string suitable for exact duplication checks.
     """
     if not url:
         return ""
@@ -49,38 +84,49 @@ def normalize_url(url: str) -> str:
 
 
 def normalize_company(company: str | None) -> str:
-    """Normalize company name by stripping common corporate suffixes."""
+    """
+    Normalize company name by stripping common corporate suffixes.
+
+    Args:
+        company: Raw company name string.
+
+    Returns:
+        Cleaned company name string.
+    """
     text = normalize_text(company)
-    for suffix in (
-        " inc",
-        " inc.",
-        " llc",
-        " ltd",
-        " corp",
-        " corporation",
-        " co",
-        " co.",
-        " company",
-        " tech",
-        " technologies",
-        " global",
-    ):
+    for suffix in _COMPANY_SUFFIXES:
         if text.endswith(suffix):
             text = text[: -len(suffix)].strip()
     return text
 
 
 def normalize_title(title: str | None) -> str:
-    """Normalize job title by removing common level/location modifiers."""
+    """
+    Normalize job title by removing common level/seniority modifiers.
+
+    Args:
+        title: Raw job title string.
+
+    Returns:
+        Cleaned title string.
+    """
     text = normalize_text(title)
-    # Strip common noise prefix/suffixes
-    text = re.sub(r"\b(sr\.?|senior|jr\.?|junior|lead|principal|staff)\b", "", text).strip()
-    text = re.sub(r"\s+", " ", text)
-    return text
+    text = _RE_TITLE_NOISE.sub("", text).strip()
+    return _RE_WHITESPACE.sub(" ", text)
 
 
+@lru_cache(maxsize=2048)
 def calculate_similarity(str1: str, str2: str) -> float:
-    """Calculate ratio similarity between two strings using SequenceMatcher."""
+    """
+    Calculate ratio similarity between two strings using SequenceMatcher with caching.
+
+    Args:
+        str1: First string.
+        str2: Second string.
+
+    Returns:
+        Similarity score from 0.0 to 1.0.
+    """
     s1 = normalize_text(str1)
     s2 = normalize_text(str2)
     if not s1 or not s2:
@@ -101,8 +147,17 @@ def check_duplicate(
 
     Check order:
     1. Exact normalized URL match
-    2. Normalized company + normalized title + location match
-    3. Similarity match across company and title
+    2. Normalized company + normalized title match
+    3. Fuzzy similarity check across company, title, and description
+
+    Args:
+        session: Active SQLAlchemy database session.
+        job: ParsedJob object to inspect.
+        title_similarity_threshold: Threshold for title fuzzy match.
+        content_similarity_threshold: Threshold for description fuzzy match.
+
+    Returns:
+        DuplicateCheckResult indicating whether a duplicate exists and why.
     """
     norm_url = normalize_url(job.job_url)
 
@@ -137,12 +192,11 @@ def check_duplicate(
 
     # 3. Fuzzy similarity check across company, title, and location
     stmt_all = select(JobRecord).order_by(JobRecord.id.desc()).limit(300)
-    recent_jobs = list(session.scalars(stmt_all))
+    recent_jobs: Sequence[JobRecord] = list(session.scalars(stmt_all))
 
     for existing in recent_jobs:
         comp_sim = calculate_similarity(job.company, existing.company) if job.company and existing.company else 0.0
         title_sim = calculate_similarity(job.title, existing.title)
-        loc_sim = calculate_similarity(job.location or "", existing.location or "") if job.location and existing.location else 0.5
 
         # Same or near-identical company + high title similarity
         if (norm_comp and existing.company_normalized and norm_comp == existing.company_normalized) or comp_sim >= 0.85:

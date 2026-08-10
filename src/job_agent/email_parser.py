@@ -1,9 +1,10 @@
-"""Parse job listings from platform-specific email formats."""
+"""Parse job listings from platform-specific email formats and email digests."""
 
 from __future__ import annotations
 
 import re
 from datetime import datetime
+from functools import lru_cache
 from typing import Any
 from urllib.parse import unquote, urlparse
 
@@ -15,9 +16,36 @@ from job_agent.models import ParsedJob
 
 logger = get_logger(__name__)
 
+# Pre-compiled regular expressions for email parsing
+_RE_URL = re.compile(r"https?://[^\s\"'<>]+")
+_RE_SALARY = re.compile(
+    r"(\$\d{2,3}(?:,\d{3})*(?:\s*-\s*\$\d{2,3}(?:,\d{3})*)?\s*(?:/hr|/hour|/yr|/year|a year|per year|an hour)?)",
+    re.IGNORECASE,
+)
+_RE_PREFERRED_SECTION = re.compile(
+    r"(preferred|nice to have|bonus|plus|desirable)[:\s-]+(.{0,500})",
+    re.IGNORECASE | re.DOTALL,
+)
+_RE_COMPANY_CONTEXT = re.compile(r"at\s+([A-Z][A-Za-z0-9&\.\-\s]{2,50})")
+_RE_LOCATION_CONTEXT = re.compile(r"([A-Z][A-Za-z\s]+,\s*[A-Z]{2}|Remote|Hybrid)")
+
+
+@lru_cache(maxsize=256)
+def _get_skill_regex(skill_clean: str) -> re.Pattern[str]:
+    """Compile and cache word boundary regex pattern for skill extraction."""
+    return re.compile(r"\b" + re.escape(skill_clean) + r"\b", re.IGNORECASE)
+
 
 def clean_html_text(html_content: str) -> str:
-    """Convert HTML string to clean plain text."""
+    """
+    Convert raw HTML string into clean plain text.
+
+    Args:
+        html_content: Raw HTML or plain text string.
+
+    Returns:
+        Stripped text without script/style tags.
+    """
     if not html_content:
         return ""
     if "<" in html_content and ">" in html_content:
@@ -31,7 +59,17 @@ def clean_html_text(html_content: str) -> str:
 
 
 def detect_platform(sender: str, body: str, config_platforms: dict[str, Any] | None = None) -> str:
-    """Identify platform (ziprecruiter, indeed, glassdoor, dice, lensa) from sender or body."""
+    """
+    Identify job platform (ziprecruiter, indeed, glassdoor, dice, lensa) from sender or body.
+
+    Args:
+        sender: Sender email address or name.
+        body: Raw or plain email body.
+        config_platforms: Optional mapping of platform configs from config.yaml.
+
+    Returns:
+        Platform identifier string.
+    """
     sender_lower = (sender or "").lower()
     body_lower = (body or "").lower()
 
@@ -63,13 +101,21 @@ def detect_platform(sender: str, body: str, config_platforms: dict[str, Any] | N
 
 
 def extract_links_with_patterns(body: str, patterns: list[str]) -> list[str]:
-    """Find http/https links in email body matching configured patterns."""
-    raw_urls = re.findall(r"https?://[^\s\"'<>]+", body)
+    """
+    Find http/https links in email body matching configured platform URL patterns.
+
+    Args:
+        body: Email body text.
+        patterns: List of target URL substring patterns.
+
+    Returns:
+        List of unique matching URLs.
+    """
+    raw_urls = _RE_URL.findall(body)
     cleaned_urls: list[str] = []
-    seen = set()
+    seen: set[str] = set()
 
     for url in raw_urls:
-        # Strip trailing punctuation
         cleaned = url.rstrip(").,];:'\"")
         if cleaned not in seen:
             seen.add(cleaned)
@@ -83,16 +129,31 @@ def extract_links_with_patterns(body: str, patterns: list[str]) -> list[str]:
 
 
 def extract_salary(text: str) -> str | None:
-    """Extract salary or hourly pay ranges from text."""
-    pattern = r"(\$\d{2,3}(?:,\d{3})*(?:\s*-\s*\$\d{2,3}(?:,\d{3})*)?\s*(?:/hr|/hour|/yr|/year|a year|per year|an hour)?)"
-    match = re.search(pattern, text, re.IGNORECASE)
+    """
+    Extract salary or hourly pay ranges from text.
+
+    Args:
+        text: Text string to inspect.
+
+    Returns:
+        Extracted salary string or None.
+    """
+    match = _RE_SALARY.search(text)
     if match:
         return match.group(1).strip()
     return None
 
 
 def extract_employment_type(text: str) -> str | None:
-    """Extract employment type (full-time, part-time, contract, etc.)."""
+    """
+    Extract employment type (full-time, part-time, contract, remote, etc.).
+
+    Args:
+        text: Text string to inspect.
+
+    Returns:
+        Comma-separated employment types string or None.
+    """
     lower = text.lower()
     types: list[str] = []
     if "full-time" in lower or "full time" in lower:
@@ -110,7 +171,16 @@ def extract_employment_type(text: str) -> str | None:
 
 
 def extract_skills_from_text(text: str, target_skills: list[str] | None = None) -> tuple[list[str], list[str]]:
-    """Extract required and preferred skills mentioned in text."""
+    """
+    Extract required and preferred skills mentioned in text.
+
+    Args:
+        text: Plain text job description.
+        target_skills: Optional list of skill keywords to search for.
+
+    Returns:
+        Tuple of (required_skills_list, preferred_skills_list).
+    """
     if target_skills is None:
         try:
             config = load_yaml_config()
@@ -125,24 +195,19 @@ def extract_skills_from_text(text: str, target_skills: list[str] | None = None) 
     preferred: list[str] = []
 
     # Check preferred section first if present
-    pref_match = re.search(
-        r"(preferred|nice to have|bonus|plus|desirable)[:\s-]+(.{0,500})",
-        text_lower,
-        re.IGNORECASE | re.DOTALL,
-    )
+    pref_match = _RE_PREFERRED_SECTION.search(text_lower)
     pref_chunk = pref_match.group(2) if pref_match else ""
 
-    seen = set()
+    seen: set[str] = set()
     for skill in target_skills:
         skill_clean = skill.strip().lower()
         if not skill_clean or skill_clean in seen:
             continue
 
-        # Match word boundaries for short terms like C, SQL, R, API
-        pattern = r"\b" + re.escape(skill_clean) + r"\b"
-        if re.search(pattern, text_lower):
+        pattern = _get_skill_regex(skill_clean)
+        if pattern.search(text_lower):
             seen.add(skill_clean)
-            if pref_chunk and re.search(pattern, pref_chunk):
+            if pref_chunk and pattern.search(pref_chunk):
                 preferred.append(skill)
             else:
                 required.append(skill)
@@ -155,8 +220,14 @@ def parse_email(
     platforms_config: dict[str, Any] | None = None,
 ) -> list[ParsedJob]:
     """
-    Extract structured job listings from a Gmail message dict.
-    Returns a list of ParsedJob objects (handles multi-job digest emails as well as single jobs).
+    Extract structured job listings from a Gmail message dictionary.
+
+    Args:
+        email: Gmail message dict containing 'id', 'subject', 'from', 'body', 'received_at'.
+        platforms_config: Optional platform configuration dict.
+
+    Returns:
+        List of ParsedJob objects extracted from single or multi-job email.
     """
     msg_id = email.get("id")
     subject = email.get("subject", "").strip()
@@ -178,7 +249,6 @@ def parse_email(
 
     if "<html" in body.lower() or "<a " in body.lower():
         soup = BeautifulSoup(body, "lxml")
-        # Find all anchor tags pointing to potential job links
         anchors = soup.find_all("a", href=True)
         job_anchors = []
         for a in anchors:
@@ -192,26 +262,23 @@ def parse_email(
                     job_anchors.append((text, href, a))
 
         if len(job_anchors) > 1:
-            # Multi-job email digest detected!
-            seen_urls = set()
+            # Multi-job email digest detected
+            seen_urls: set[str] = set()
             for text, href, anchor_elem in job_anchors:
                 clean_url = href.rstrip(").,];:'\"")
                 if clean_url in seen_urls:
                     continue
                 seen_urls.add(clean_url)
 
-                # Get surrounding context text (parent tag text)
                 parent = anchor_elem.parent
                 context_text = parent.get_text(" ", strip=True) if parent else text
 
                 company = "Unknown"
-                company_match = re.search(r"at\s+([A-Z][A-Za-z0-9&\.\-\s]{2,50})", context_text)
+                company_match = _RE_COMPANY_CONTEXT.search(context_text)
                 if company_match:
                     company = company_match.group(1).strip()
 
-                loc_match = re.search(
-                    r"([A-Z][A-Za-z\s]+,\s*[A-Z]{2}|Remote|Hybrid)", context_text
-                )
+                loc_match = _RE_LOCATION_CONTEXT.search(context_text)
                 location = loc_match.group(1).strip() if loc_match else None
 
                 salary = extract_salary(context_text)
@@ -261,9 +328,9 @@ def parse_email(
         title = "Untitled Role"
 
     company = "Unknown"
-    company_match = re.search(r"at\s+([A-Z][A-Za-z0-9&\.\-\s]{2,50})", subject)
+    company_match = _RE_COMPANY_CONTEXT.search(subject)
     if not company_match:
-        company_match = re.search(r"at\s+([A-Z][A-Za-z0-9&\.\-\s]{2,50})", clean_text_body[:500])
+        company_match = _RE_COMPANY_CONTEXT.search(clean_text_body[:500])
     if company_match:
         company = company_match.group(1).strip()
 
@@ -271,9 +338,7 @@ def parse_email(
     if company != "Unknown" and f" at {company}".lower() in title.lower():
         title = re.sub(re.escape(f" at {company}"), "", title, flags=re.IGNORECASE).strip()
 
-    loc_match = re.search(
-        r"([A-Z][A-Za-z\s]+,\s*[A-Z]{2}|Remote|Hybrid)", clean_text_body[:1000]
-    )
+    loc_match = _RE_LOCATION_CONTEXT.search(clean_text_body[:1000])
     location = loc_match.group(1).strip() if loc_match else None
 
     salary = extract_salary(clean_text_body)

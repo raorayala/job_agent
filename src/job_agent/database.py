@@ -10,6 +10,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     Float,
+    Index,
     Integer,
     String,
     Text,
@@ -22,23 +23,33 @@ from sqlalchemy import (
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
+from job_agent.logging_config import get_logger
 from job_agent.models import ApplicationStatus
+
+logger = get_logger(__name__)
 
 
 def _utcnow() -> datetime:
+    """Return current UTC datetime with timezone info."""
     return datetime.now(timezone.utc)
 
 
 class Base(DeclarativeBase):
+    """Base SQLAlchemy declarative class."""
+
     pass
 
 
 class JobRecord(Base):
-    """Primary 'Jobs Applied' / discovered-jobs table."""
+    """Primary 'Jobs Applied' and discovered jobs database model."""
 
     __tablename__ = "jobs"
     __table_args__ = (
         UniqueConstraint("job_url_normalized", name="uq_job_url_normalized"),
+        Index("ix_jobs_company_title_norm", "company_normalized", "title_normalized"),
+        Index("ix_jobs_status_score", "status", "match_score"),
+        Index("ix_jobs_date_discovered", "date_discovered"),
+        Index("ix_jobs_gmail_msg_id", "gmail_message_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

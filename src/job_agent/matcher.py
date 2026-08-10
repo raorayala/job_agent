@@ -1,9 +1,9 @@
-"""Rule-based job matching and explainable scoring."""
+"""Rule-based job matching and explainable scoring engine."""
 
 from __future__ import annotations
 
 import re
-from difflib import SequenceMatcher
+from functools import lru_cache
 
 from job_agent.config import load_yaml_config
 from job_agent.job_normalizer import calculate_similarity, normalize_text
@@ -11,12 +11,36 @@ from job_agent.models import CandidateProfile, MatchExplanation, ParsedJob, Reco
 from job_agent.resume_parser import extract_resume_text
 
 
+@lru_cache(maxsize=512)
+def _compile_word_pattern(word: str) -> re.Pattern[str]:
+    """
+    Compile and cache a word boundary regex pattern for skill/word search.
+
+    Args:
+        word: Clean word string.
+
+    Returns:
+        Compiled regex Pattern with word boundaries and case insensitivity.
+    """
+    return re.compile(r"\b" + re.escape(word.strip().lower()) + r"\b", re.IGNORECASE)
+
+
 def recommendation_for_score(score: float, excluded: bool = False) -> Recommendation:
+    """
+    Map numeric match score to a human-readable recommendation level.
+
+    Args:
+        score: Score between 0.0 and 100.0.
+        excluded: Flag indicating if job matched any exclusion rules.
+
+    Returns:
+        Recommendation enum value.
+    """
     if excluded:
         return Recommendation.EXCLUDED
-    if score >= 80:
+    if score >= 80.0:
         return Recommendation.STRONG_MATCH
-    if score >= 65:
+    if score >= 65.0:
         return Recommendation.WORTH_REVIEWING
     return Recommendation.LOW_MATCH
 
@@ -37,6 +61,14 @@ def score_job(
     - Location / work mode compatibility (15)
     - Salary compatibility (10)
     - Exclusions (forces score=0, recommendation=Excluded)
+
+    Args:
+        job: ParsedJob instance.
+        profile: CandidateProfile instance.
+        resume_text: Optional pre-extracted master resume plain text.
+
+    Returns:
+        MatchExplanation dataclass containing total score, recommendation, and factor breakdown.
     """
     try:
         config = load_yaml_config()
@@ -100,9 +132,7 @@ def score_job(
     # Excluded skills
     if profile.excluded_skills:
         for exc_skill in profile.excluded_skills:
-            if exc_skill.strip() and re.search(
-                r"\b" + re.escape(exc_skill.strip().lower()) + r"\b", haystack
-            ):
+            if exc_skill.strip() and _compile_word_pattern(exc_skill).search(haystack):
                 concerns.append(f"Excluded skill keyword found: '{exc_skill}'")
                 return MatchExplanation(
                     score=0.0,
@@ -136,8 +166,9 @@ def score_job(
             sk_clean = skill.strip().lower()
             if not sk_clean:
                 continue
-            in_job = bool(re.search(r"\b" + re.escape(sk_clean) + r"\b", haystack))
-            in_resume = bool(re.search(r"\b" + re.escape(sk_clean) + r"\b", resume_haystack)) if resume_haystack else True
+            pat = _compile_word_pattern(sk_clean)
+            in_job = bool(pat.search(haystack))
+            in_resume = bool(pat.search(resume_haystack)) if resume_haystack else True
 
             if in_job:
                 req_found += 1
@@ -159,7 +190,7 @@ def score_job(
             sk_clean = skill.strip().lower()
             if not sk_clean:
                 continue
-            if re.search(r"\b" + re.escape(sk_clean) + r"\b", haystack):
+            if _compile_word_pattern(sk_clean).search(haystack):
                 pref_found += 1
                 if skill not in matched_skills:
                     matched_skills.append(skill)
