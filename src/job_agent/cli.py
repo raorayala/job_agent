@@ -522,28 +522,62 @@ def follow_ups_cmd() -> None:
         session.close()
 
 
-def _open_in_browser(url: str, browser_choice: str = "system") -> None:
+def _find_chrome_path() -> str | None:
+    """Return the local Google Chrome executable path when installed."""
     import os
+
+    possible_paths = [
+        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+        os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
+    ]
+    return next((p for p in possible_paths if os.path.exists(p)), None)
+
+
+def _open_in_browser(url: str, browser_choice: str = "system", *, new_tab: bool = True) -> None:
+    """
+    Open a URL in the preferred browser.
+
+    When Chrome is available (or preferred), opens the URL in a new tab of the
+    existing Chrome window instead of replacing currently open pages.
+    """
     import subprocess
     import webbrowser
 
-    choice = browser_choice.lower()
-    if choice in ("chrome", "google-chrome"):
-        possible_paths = [
-            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-            os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
-        ]
-        chrome_path = next((p for p in possible_paths if os.path.exists(p)), None)
-        if chrome_path:
-            try:
-                subprocess.Popen([chrome_path, url])
-                return
-            except Exception:
-                pass
+    choice = (browser_choice or "system").lower()
+    chrome_path = _find_chrome_path()
+    use_chrome = choice in ("chrome", "google-chrome") or (choice in ("system", "default") and chrome_path)
 
-    # Opens OS system default browser without forcing Edge or Chrome
-    webbrowser.open(url)
+    if use_chrome and chrome_path:
+        try:
+            cmd = [chrome_path]
+            if new_tab:
+                cmd.append("--new-tab")
+            cmd.append(url)
+            subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return
+        except Exception:
+            pass
+
+    # Fallback: OS default browser (new tab when supported)
+    webbrowser.open_new_tab(url) if new_tab else webbrowser.open(url)
+
+
+def _wait_for_local_server(url: str, timeout_seconds: float = 8.0) -> bool:
+    """Poll local HTTP server until it accepts connections or timeout expires."""
+    import time
+    import urllib.error
+    import urllib.request
+
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        try:
+            with urllib.request.urlopen(url, timeout=1.0) as resp:
+                if resp.status < 500:
+                    return True
+        except (urllib.error.URLError, TimeoutError, OSError):
+            time.sleep(0.2)
+    return False
 
 
 @app.command("search-links")
@@ -633,8 +667,8 @@ def fetch_jobs_cmd(
 @app.command("serve")
 def serve_cmd(
     port: int = typer.Option(8000, "--port", help="Local HTTP port for Web Console & browser capture"),
-    open_browser: bool = typer.Option(True, "--open/--no-open", help="Open Web Console in browser automatically"),
-    open_capture: bool = typer.Option(False, "--open-capture", help="Open Bookmarklet Setup Page http://localhost:8000/capture"),
+    open_browser: bool = typer.Option(True, "--open/--no-open", help="Open Web Dashboard in a new Chrome tab automatically"),
+    open_capture: bool = typer.Option(False, "--open-capture", help="Also open Bookmarklet Setup Page in another new tab"),
 ) -> None:
     """Start local Web Console & CLI Cheat Sheet server on http://localhost:8000/."""
     import time
@@ -649,11 +683,24 @@ def serve_cmd(
         f"  Interactive CLI Commands: All 27 CLI commands available for 1-click execution\n"
         f"  Press [bold]Ctrl+C[/bold] to stop server."
     )
-    browser_choice = settings.preferred_browser or "system"
+    # Prefer Chrome so an already-open Chrome window gets a new dashboard tab.
+    browser_choice = settings.preferred_browser or "chrome"
+    if browser_choice in ("system", "default") and _find_chrome_path():
+        browser_choice = "chrome"
+
     if open_browser:
-        _open_in_browser(url, browser_choice=browser_choice)
+        ready = _wait_for_local_server(url)
+        if ready:
+            _open_in_browser(url, browser_choice=browser_choice, new_tab=True)
+            console.print(f"[green]Opened dashboard in a new Chrome tab:[/green] {url}")
+        else:
+            console.print(
+                f"[yellow]Server started, but browser open timed out. Open manually:[/yellow] {url}"
+            )
     if open_capture:
-        _open_in_browser(capture_url, browser_choice=browser_choice)
+        _wait_for_local_server(capture_url, timeout_seconds=3.0)
+        _open_in_browser(capture_url, browser_choice=browser_choice, new_tab=True)
+        console.print(f"[green]Opened bookmarklet setup in a new Chrome tab:[/green] {capture_url}")
 
     try:
         while True:
@@ -666,8 +713,8 @@ def serve_cmd(
 @app.command("web")
 def web_cmd(
     port: int = typer.Option(8000, "--port", help="Local HTTP port"),
-    open_browser: bool = typer.Option(True, "--open/--no-open", help="Open Web Console in browser"),
-    open_capture: bool = typer.Option(False, "--open-capture", help="Open Bookmarklet Setup Page http://localhost:8000/capture"),
+    open_browser: bool = typer.Option(True, "--open/--no-open", help="Open Web Dashboard in a new Chrome tab automatically"),
+    open_capture: bool = typer.Option(False, "--open-capture", help="Also open Bookmarklet Setup Page in another new tab"),
 ) -> None:
     """Launch interactive Web Application Dashboard and CLI Command Runner in your browser."""
     serve_cmd(port=port, open_browser=open_browser, open_capture=open_capture)

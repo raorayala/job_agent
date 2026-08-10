@@ -140,13 +140,42 @@ def test_review_first_resume_approval_workflow(tmp_path):
 def test_browser_launcher_default_behavior(monkeypatch):
     called_urls = []
 
-    def mock_open(url):
+    def mock_open_new_tab(url):
         called_urls.append(url)
         return True
 
     import webbrowser
-    monkeypatch.setattr(webbrowser, "open", mock_open)
+    import job_agent.cli as cli_mod
 
-    _open_in_browser("https://www.linkedin.com/jobs/search", browser_choice="system")
+    # Force fallback path (no Chrome binary) to verify webbrowser.new_tab behavior
+    monkeypatch.setattr(cli_mod, "_find_chrome_path", lambda: None)
+    monkeypatch.setattr(webbrowser, "open_new_tab", mock_open_new_tab)
+
+    _open_in_browser("https://www.linkedin.com/jobs/search", browser_choice="system", new_tab=True)
     assert len(called_urls) == 1
     assert called_urls[0] == "https://www.linkedin.com/jobs/search"
+
+
+def test_browser_launcher_opens_chrome_new_tab(monkeypatch, tmp_path):
+    launched = []
+    fake_chrome = tmp_path / "chrome.exe"
+    fake_chrome.write_text("", encoding="utf-8")
+
+    import job_agent.cli as cli_mod
+    import subprocess
+
+    monkeypatch.setattr(cli_mod, "_find_chrome_path", lambda: str(fake_chrome))
+
+    def mock_popen(cmd, *args, **kwargs):
+        launched.append(cmd)
+        class Dummy:
+            pass
+        return Dummy()
+
+    monkeypatch.setattr(subprocess, "Popen", mock_popen)
+
+    _open_in_browser("http://localhost:8000/", browser_choice="chrome", new_tab=True)
+    assert len(launched) == 1
+    assert launched[0][0] == str(fake_chrome)
+    assert "--new-tab" in launched[0]
+    assert "http://localhost:8000/" in launched[0]
