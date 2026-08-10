@@ -9,8 +9,13 @@ from job_agent.models import CandidateProfile, MatchExplanation, ParsedJob, Reco
 from job_agent.profile_optimize import analyze_profile_against_target, apply_skills_order_to_profile
 from job_agent.resume_optimize import (
     apply_accepted_suggestions_to_draft,
+    compute_keyword_gap,
+    extract_jd_keywords,
+    filter_ats_keywords,
     generate_optimize_suggestions,
+    is_actionable_ats_keyword,
     load_optimize_bundle,
+    sanitize_job_description_for_keywords,
     update_suggestion,
 )
 
@@ -39,6 +44,101 @@ def _settings(tmp_path: Path) -> Settings:
         log_level="INFO",
         config_path=tmp_path / "config.yaml",
     )
+
+
+def test_sanitize_strips_urls_and_email_boilerplate():
+    raw = (
+        "Murali, don't miss these jobs. "
+        "Python Docker required. "
+        "https://cts.indeed.com/v3/h4siaaaaaaaa?utm=1 "
+        "Click here to apply now."
+    )
+    cleaned = sanitize_job_description_for_keywords(raw)
+    assert "cts.indeed.com" not in cleaned.lower()
+    assert "https://" not in cleaned.lower()
+    assert "don't miss" not in cleaned.lower()
+    assert "Click here to apply" not in cleaned
+    assert "Python" in cleaned
+    assert "Docker" in cleaned
+
+
+def test_extract_jd_keywords_ignores_noise_and_benefits():
+    jd = (
+        "Senior Engineer III / Sr level 3. "
+        "Need Python, Docker, SQL, AWS, Microservices, and CI/CD. "
+        "Benefits include insurance, leave, 401k match, paid PTO, health, medical, vision, dental. "
+        "Equal opportunity employer. Background check required. "
+        "Apply via https://cts.indeed.com/v3/h4siaaaaaaaa tracking link."
+    )
+    terms = [t.lower() for t, _ in extract_jd_keywords(jd, limit=30)]
+    for noise in (
+        "insurance",
+        "leave",
+        "match",
+        "paid",
+        "pto",
+        "health",
+        "medical",
+        "vision",
+        "dental",
+        "background",
+        "equal",
+        "opportunity",
+        "iii",
+        "sr",
+        "indeed",
+        "cts",
+        "h4siaaaaaaaa",
+    ):
+        assert noise not in terms, f"unexpected noise keyword: {noise}"
+    for skill in ("python", "docker", "sql", "aws", "microservices"):
+        assert skill in terms, f"missing technical keyword: {skill}"
+    assert any(t in {"ci/cd", "ci", "cd"} for t in terms) or "ci/cd" in " ".join(terms)
+
+
+def test_is_actionable_ats_keyword_rules():
+    assert is_actionable_ats_keyword("Python")
+    assert is_actionable_ats_keyword("C++")
+    assert is_actionable_ats_keyword("SRE")
+    assert is_actionable_ats_keyword("CI/CD")
+    assert not is_actionable_ats_keyword("iii")
+    assert not is_actionable_ats_keyword("insurance")
+    assert not is_actionable_ats_keyword("leave")
+    assert not is_actionable_ats_keyword("sr")
+    assert not is_actionable_ats_keyword("h4siaaaaaaaa")
+    assert not is_actionable_ats_keyword("cts.indeed.com")
+
+
+def test_compute_keyword_gap_filters_noise_from_suggestions_path():
+    job = ParsedJob(
+        title="Backend Engineer",
+        company="Acme",
+        description=(
+            "Python Kubernetes AWS required. Benefits: insurance leave match paid PTO. "
+            "cts.indeed.com/v3/h4siaaaaaaaa iii sr"
+        ),
+    )
+    match = MatchExplanation(
+        score=70.0,
+        recommendation=Recommendation.WORTH_REVIEWING,
+        matched_skills=["Python"],
+        missing_skills=["Kubernetes", "insurance", "leave", "iii"],
+        summary="partial",
+    )
+    matched, gaps, readiness = compute_keyword_gap(
+        job,
+        resume_text="Python developer with APIs",
+        match=match,
+    )
+    lowered_gaps = {g.lower() for g in gaps}
+    lowered_matched = {m.lower() for m in matched}
+    assert "python" in lowered_matched
+    assert "kubernetes" in lowered_gaps or "kubernetes" in lowered_matched
+    assert "insurance" not in lowered_gaps
+    assert "leave" not in lowered_gaps
+    assert "iii" not in lowered_gaps
+    assert 0 <= readiness <= 100
+    assert filter_ats_keywords(["Python", "insurance", "iii", "Docker"]) == ["Python", "Docker"]
 
 
 def test_generate_optimize_suggestions_and_accept_apply(tmp_path: Path):
@@ -80,6 +180,11 @@ def test_generate_optimize_suggestions_and_accept_apply(tmp_path: Path):
     assert bundle.suggestions
     assert bundle.readiness_score >= 0
     assert load_optimize_bundle(draft) is not None
+    noise = {"insurance", "leave", "iii", "pto", "indeed"}
+    assert not noise.intersection({g.lower() for g in bundle.keyword_gaps})
+    for suggestion in bundle.suggestions:
+        if suggestion.kind == "keyword_insert" and suggestion.keyword:
+            assert is_actionable_ats_keyword(suggestion.keyword)
 
     # Accept first non-confirm suggestion if possible
     target = next(
