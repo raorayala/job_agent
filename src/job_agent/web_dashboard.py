@@ -433,6 +433,124 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
         body.module-gate-open #module-gate {
             display: flex !important;
         }
+        /* Cursor-like left sidebar layout */
+        #app-shell {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .app-layout {
+            display: flex;
+            flex: 1;
+            min-height: 0;
+        }
+        #app-sidebar {
+            width: 268px;
+            flex-shrink: 0;
+            background: #0b1220;
+            color: #cbd5e1;
+            border-right: 1px solid #1e293b;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+        #app-sidebar .sidebar-brand {
+            padding: 1rem 1rem 0.75rem;
+            border-bottom: 1px solid #1e293b;
+        }
+        #app-sidebar .sidebar-brand .brand-title {
+            color: #f8fafc;
+            font-weight: 700;
+            font-size: 0.95rem;
+        }
+        #app-sidebar .sidebar-section-label {
+            margin: 1rem 1rem 0.4rem;
+            font-size: 0.68rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #64748b;
+            font-weight: 700;
+        }
+        #app-sidebar .sidebar-group-title {
+            margin: 0.35rem 0.65rem;
+            padding: 0.45rem 0.65rem;
+            border-radius: 8px;
+            color: #e2e8f0;
+            font-size: 0.82rem;
+            font-weight: 650;
+        }
+        #app-sidebar .sidebar-nav-btn {
+            display: flex;
+            align-items: center;
+            gap: 0.55rem;
+            width: calc(100% - 1.3rem);
+            margin: 0.15rem 0.65rem;
+            padding: 0.55rem 0.7rem;
+            border: none;
+            border-radius: 8px;
+            background: transparent;
+            color: #94a3b8;
+            text-align: left;
+            font-size: 0.86rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.15s ease, color 0.15s ease;
+        }
+        #app-sidebar .sidebar-nav-btn:hover {
+            background: #1e293b;
+            color: #f1f5f9;
+        }
+        #app-sidebar .sidebar-nav-btn.active {
+            background: #1d4ed8;
+            color: #ffffff;
+        }
+        #app-sidebar .sidebar-nav-btn .step-num {
+            width: 1.25rem;
+            height: 1.25rem;
+            border-radius: 999px;
+            background: rgba(148, 163, 184, 0.2);
+            color: inherit;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+        #app-sidebar .sidebar-nav-btn.active .step-num {
+            background: rgba(255,255,255,0.22);
+        }
+        #app-sidebar .sidebar-footer {
+            margin-top: auto;
+            padding: 0.85rem;
+            border-top: 1px solid #1e293b;
+        }
+        #app-main {
+            flex: 1;
+            min-width: 0;
+            overflow-y: auto;
+            background: var(--bg-main);
+        }
+        #app-main .main-pane-wrap {
+            padding: 1.1rem 1.35rem 2rem;
+        }
+        .page-title-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        .page-title-bar h2 {
+            margin: 0;
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #0f172a;
+        }
+        @media (max-width: 900px) {
+            .app-layout { flex-direction: column; }
+            #app-sidebar { width: 100%; max-height: none; }
+        }
         #module-gate {
             display: none;
             min-height: 100vh;
@@ -501,11 +619,10 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
                 <div class="module-gate-card" id="enter-user-module" role="button" tabindex="0" onclick="enterModule('user')" onkeydown="if(event.key==='Enter')enterModule('user')">
                     <div class="module-icon bg-primary-subtle text-primary"><i class="bi bi-person-check"></i></div>
                     <h3 class="fw-bold h4">USER Module</h3>
-                    <p class="text-muted mb-3">Daily workflow: discover jobs, review AI Optimize suggestions, approve resume drafts, and track applications.</p>
+                    <p class="text-muted mb-3">Daily workflow only: Web Tasks (discover → review → track) and CLS Tasks. No admin/database tools here.</p>
                     <ul class="small text-muted mb-4">
-                        <li>Dashboard &amp; Job Discovery</li>
-                        <li>Resume Review + AI Optimize</li>
-                        <li>Application Board</li>
+                        <li>Web Tasks: Dashboard → Discover → Review &amp; Optimize → Board</li>
+                        <li>CLS Tasks: sync, analyze, list, report helpers</li>
                     </ul>
                     <span class="btn btn-primary w-100"><i class="bi bi-box-arrow-in-right"></i> Enter User Module</span>
                 </div>
@@ -514,11 +631,11 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
                 <div class="module-gate-card admin-card" id="enter-admin-module" role="button" tabindex="0" onclick="enterModule('admin')" onkeydown="if(event.key==='Enter')enterModule('admin')">
                     <div class="module-icon bg-warning-subtle text-warning"><i class="bi bi-shield-lock"></i></div>
                     <h3 class="fw-bold h4">ADMIN Module</h3>
-                    <p class="text-muted mb-3">Setup &amp; maintenance: profile/skills editor, keyword audit, database explorer, CLI runner, and system health.</p>
+                    <p class="text-muted mb-3">Setup &amp; maintenance only: health, profile optimize, database, full CLI. No daily discovery/review board here.</p>
                     <ul class="small text-muted mb-4">
-                        <li>Profile &amp; Skills + AI Profile Optimize</li>
+                        <li>System Health, Profile &amp; Skills</li>
                         <li>Database Explorer &amp; Cleanup</li>
-                        <li>CLI Runner &amp; Demo Seed</li>
+                        <li>Full CLI Runner &amp; Demo Seed</li>
                     </ul>
                     <span class="btn btn-warning text-dark w-100"><i class="bi bi-gear-wide-connected"></i> Enter Admin Module</span>
                 </div>
@@ -531,19 +648,16 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
 <header class="app-header d-flex justify-content-between align-items-center">
     <div>
         <h4 class="mb-0 fw-bold"><i class="bi bi-robot"></i> Job Search Agent</h4>
-        <small class="text-light-50">Automated Review-First Personal Career Assistant (100% Private)</small>
+        <small class="text-light-50" id="header-module-subtitle">Select a module to begin</small>
     </div>
     <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
         <span class="badge bg-light text-dark" id="console-mode-badge">User Mode</span>
         <button type="button" class="btn btn-sm btn-outline-light" id="console-mode-home" onclick="showModuleGate()" title="Return to USER / ADMIN module chooser">
             <i class="bi bi-grid-1x2"></i> Switch Module
         </button>
-        <button type="button" class="btn btn-sm btn-outline-light" id="console-mode-toggle" onclick="toggleConsoleMode()" title="Quick-switch between User and Admin without returning to the chooser">
-            <i class="bi bi-shield-lock"></i> <span id="console-mode-toggle-label">Admin Setup</span>
-        </button>
-        <a href="/capture" class="btn btn-sm btn-warning text-dark" title="Install or re-install the 1-click Chrome bookmarklet"><i class="bi bi-bookmark-star-fill"></i> Install Bookmarklet</a>
-        <button class="btn btn-sm btn-outline-light" onclick="openImportUrlModal()"><i class="bi bi-link-45deg"></i> Import URL</button>
-        <a href="/api/calendar.ics" class="btn btn-sm btn-outline-light"><i class="bi bi-calendar-event"></i> .ics Calendar</a>
+        <a href="/capture" class="btn btn-sm btn-warning text-dark user-only" title="Install or re-install the 1-click Chrome bookmarklet"><i class="bi bi-bookmark-star-fill"></i> Install Bookmarklet</a>
+        <button class="btn btn-sm btn-outline-light user-only" onclick="openImportUrlModal()"><i class="bi bi-link-45deg"></i> Import URL</button>
+        <a href="/api/calendar.ics" class="btn btn-sm btn-outline-light user-only"><i class="bi bi-calendar-event"></i> .ics Calendar</a>
         <button class="btn btn-sm btn-primary" onclick="loadAllData()"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
     </div>
 </header>
@@ -559,36 +673,63 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
     </div>
 </div>
 
-<div class="container-fluid px-4 py-3">
-    <!-- Navigation Tabs -->
-    <ul class="nav nav-tabs mb-4" id="mainTabs" role="tablist">
-        <li class="nav-item">
-            <button class="nav-link active" id="dashboard-tab" data-bs-toggle="tab" data-bs-target="#dashboard-pane"><i class="bi bi-speedometer2"></i> Dashboard</button>
-        </li>
-        <li class="nav-item">
-            <button class="nav-link" id="discovery-tab" data-bs-toggle="tab" data-bs-target="#discovery-pane"><i class="bi bi-compass"></i> Job Discovery (Top 10 Platforms)</button>
-        </li>
-        <li class="nav-item">
-            <button class="nav-link" id="review-tab" data-bs-toggle="tab" data-bs-target="#review-pane"><i class="bi bi-file-earmark-check"></i> Resume Review & Approvals</button>
-        </li>
-        <li class="nav-item">
-            <button class="nav-link" id="kanban-tab" data-bs-toggle="tab" data-bs-target="#kanban-pane"><i class="bi bi-kanban"></i> Application Board</button>
-        </li>
-        <li class="nav-item admin-only">
-            <button class="nav-link" id="db-tab" data-bs-toggle="tab" data-bs-target="#db-pane" onclick="loadDbExplorer()"><i class="bi bi-database-gear"></i> Database Explorer</button>
-        </li>
-        <li class="nav-item admin-only">
-            <button class="nav-link" id="profile-tab" data-bs-toggle="tab" data-bs-target="#profile-pane"><i class="bi bi-person-gear"></i> Profile & Skills Editor</button>
-        </li>
-        <li class="nav-item admin-only">
-            <button class="nav-link" id="cheatsheet-tab" data-bs-toggle="tab" data-bs-target="#cheatsheet-pane"><i class="bi bi-terminal"></i> CLI Runner</button>
-        </li>
+<div class="app-layout">
+    <aside id="app-sidebar" aria-label="Module navigation">
+        <div class="sidebar-brand">
+            <div class="brand-title" id="sidebar-module-title">USER Module</div>
+            <div class="small text-secondary" id="sidebar-module-hint">Step-by-step daily workflow</div>
+        </div>
+
+        <!-- USER exclusive navigation -->
+        <div class="user-only" id="user-sidebar-nav">
+            <div class="sidebar-section-label">User</div>
+            <div class="sidebar-group-title"><i class="bi bi-window-sidebar me-1"></i> Web Tasks</div>
+            <button type="button" class="sidebar-nav-btn active" id="dashboard-tab" data-pane="dashboard-pane" onclick="navigateTo('dashboard-tab')"><span class="step-num">1</span> Dashboard</button>
+            <button type="button" class="sidebar-nav-btn" id="discovery-tab" data-pane="discovery-pane" onclick="navigateTo('discovery-tab')"><span class="step-num">2</span> Discover Jobs</button>
+            <button type="button" class="sidebar-nav-btn" id="review-tab" data-pane="review-pane" onclick="navigateTo('review-tab')"><span class="step-num">3</span> Review &amp; Optimize</button>
+            <button type="button" class="sidebar-nav-btn" id="kanban-tab" data-pane="kanban-pane" onclick="navigateTo('kanban-tab')"><span class="step-num">4</span> Application Board</button>
+
+            <div class="sidebar-group-title mt-2"><i class="bi bi-terminal me-1"></i> CLS Tasks</div>
+            <button type="button" class="sidebar-nav-btn" id="cls-tab" data-pane="cls-pane" onclick="navigateTo('cls-tab')"><span class="step-num">5</span> CLS Command Tasks</button>
+        </div>
+
+        <!-- ADMIN exclusive navigation -->
+        <div class="admin-only" id="admin-sidebar-nav">
+            <div class="sidebar-section-label">Admin</div>
+            <button type="button" class="sidebar-nav-btn" id="admin-home-tab" data-pane="admin-home-pane" onclick="navigateTo('admin-home-tab');"><span class="step-num">1</span> System Health &amp; Setup</button>
+            <button type="button" class="sidebar-nav-btn" id="profile-tab" data-pane="profile-pane" onclick="navigateTo('profile-tab')"><span class="step-num">2</span> Profile &amp; Skills</button>
+            <button type="button" class="sidebar-nav-btn" id="db-tab" data-pane="db-pane" onclick="navigateTo('db-tab'); loadDbExplorer();"><span class="step-num">3</span> Database Explorer</button>
+            <button type="button" class="sidebar-nav-btn" id="cheatsheet-tab" data-pane="cheatsheet-pane" onclick="navigateTo('cheatsheet-tab')"><span class="step-num">4</span> Full CLI Runner</button>
+        </div>
+
+        <div class="sidebar-footer">
+            <button type="button" class="btn btn-sm btn-outline-light w-100" onclick="showModuleGate()"><i class="bi bi-box-arrow-left"></i> Exit to Module Chooser</button>
+        </div>
+    </aside>
+
+    <main id="app-main">
+    <div class="main-pane-wrap">
+    <!-- Hidden bootstrap-compatible tab triggers kept for compatibility -->
+    <ul class="nav nav-tabs d-none" id="mainTabs" role="tablist">
+        <li class="nav-item user-only"><button class="nav-link active" id="dashboard-tab-bs" data-bs-toggle="tab" data-bs-target="#dashboard-pane"></button></li>
+        <li class="nav-item user-only"><button class="nav-link" id="discovery-tab-bs" data-bs-toggle="tab" data-bs-target="#discovery-pane"></button></li>
+        <li class="nav-item user-only"><button class="nav-link" id="review-tab-bs" data-bs-toggle="tab" data-bs-target="#review-pane"></button></li>
+        <li class="nav-item user-only"><button class="nav-link" id="kanban-tab-bs" data-bs-toggle="tab" data-bs-target="#kanban-pane"></button></li>
+        <li class="nav-item user-only"><button class="nav-link" id="cls-tab-bs" data-bs-toggle="tab" data-bs-target="#cls-pane"></button></li>
+        <li class="nav-item admin-only"><button class="nav-link" id="admin-home-tab-bs" data-bs-toggle="tab" data-bs-target="#admin-home-pane"></button></li>
+        <li class="nav-item admin-only"><button class="nav-link" id="db-tab-bs" data-bs-toggle="tab" data-bs-target="#db-pane"></button></li>
+        <li class="nav-item admin-only"><button class="nav-link" id="profile-tab-bs" data-bs-toggle="tab" data-bs-target="#profile-pane"></button></li>
+        <li class="nav-item admin-only"><button class="nav-link" id="cheatsheet-tab-bs" data-bs-toggle="tab" data-bs-target="#cheatsheet-pane"></button></li>
     </ul>
 
     <div class="tab-content" id="mainTabsContent">
         
-        <!-- DASHBOARD PANE -->
-        <div class="tab-pane fade show active" id="dashboard-pane">
+        <!-- DASHBOARD PANE (USER Web Tasks step 1) -->
+        <div class="tab-pane fade show active user-only" id="dashboard-pane">
+            <div class="page-title-bar">
+                <h2><i class="bi bi-speedometer2 text-primary"></i> Dashboard</h2>
+                <span class="badge bg-primary-subtle text-primary">Web Tasks · Step 1</span>
+            </div>
             <div class="row g-3 mb-4">
                 <div class="col-md-3">
                     <div class="stat-card">
@@ -617,60 +758,19 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
             </div>
 
             <!-- User focus banner (daily workflow) -->
-            <div class="alert alert-primary border-0 shadow-sm user-only mb-4" id="user-focus-banner">
+            <div class="alert alert-primary border-0 shadow-sm mb-4" id="user-focus-banner">
                 <div class="fw-semibold mb-1"><i class="bi bi-briefcase-fill"></i> Daily job search workspace</div>
-                <div class="small mb-0">Discover jobs, review match scores, tailor resumes, and track applications. Configuration and database tools live in <strong>Admin Setup</strong> (top-right).</div>
-            </div>
-
-            <!-- Getting Started Workflow (admin setup once) -->
-            <div class="card border-0 shadow-sm mb-4 border-start border-primary border-4 admin-only" id="getting-started-flow">
-                <div class="card-body py-3">
-                    <div class="fw-bold mb-2"><i class="bi bi-signpost-split-fill text-primary"></i> Recommended workflow</div>
-                    <ol class="mb-0 small text-muted ps-3">
-                        <li class="mb-1"><strong class="text-dark">Setup</strong> — Complete the checklist below (profile, resume, Gmail OAuth).</li>
-                        <li class="mb-1"><strong class="text-dark">Discover</strong> — Load demo jobs, search recommended platforms, or import via URL / bookmarklet.</li>
-                        <li class="mb-1"><strong class="text-dark">Score</strong> — Click <em>Re-Score Jobs</em> after profile changes; edit incomplete imports for better matches.</li>
-                        <li class="mb-1"><strong class="text-dark">Review</strong> — Tailor drafts, approve explicitly, then apply manually on the employer site.</li>
-                        <li><strong class="text-dark">Track</strong> — Move jobs on the Kanban board; mark Applied only after you submit.</li>
-                    </ol>
-                    <div class="mt-2 small text-muted">Run <code>python -m job_agent test --guided --flow-pause 15</code> for a paced Chrome walkthrough.</div>
-                </div>
-            </div>
-
-            <!-- System Health & Onboarding (admin) -->
-            <div class="card border-0 shadow-sm mb-4 admin-only" id="system-health-card">
-                <div class="card-header bg-white fw-bold py-3 d-flex justify-content-between align-items-center">
-                    <span><i class="bi bi-heart-pulse text-danger"></i> System Health & Setup Checklist</span>
-                    <button class="btn btn-sm btn-outline-success" onclick="openSeedDemoModal()"><i class="bi bi-database-add"></i> Load Demo Jobs</button>
-                </div>
-                <div class="card-body">
-                    <div class="row g-3 mb-3">
-                        <div class="col-md-4">
-                            <div class="small text-muted">Database</div>
-                            <div class="fw-semibold text-truncate" id="health-db-path" title="">-</div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="small text-muted">Gmail OAuth</div>
-                            <div id="health-gmail-status">-</div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="small text-muted">Master Resume</div>
-                            <div id="health-resume-status">-</div>
-                        </div>
-                    </div>
-                    <div class="mb-2 fw-semibold small">Getting started checklist:</div>
-                    <ul class="list-group list-group-flush small" id="onboarding-checklist"></ul>
-                </div>
+                <div class="small mb-0">Follow the left sidebar under <strong>Web Tasks</strong> (steps 1–4), then use <strong>CLS Tasks</strong> for command-line helpers. Admin tools are only in the Admin module.</div>
             </div>
 
             <!-- Compact setup status for users -->
-            <div class="card border-0 shadow-sm mb-4 user-only" id="user-setup-status-card">
+            <div class="card border-0 shadow-sm mb-4" id="user-setup-status-card">
                 <div class="card-body py-3 d-flex flex-wrap align-items-center justify-content-between gap-2">
                     <div>
                         <div class="fw-bold mb-1"><i class="bi bi-check2-circle text-success"></i> Ready to search</div>
                         <div class="small text-muted mb-0" id="user-setup-summary">Loading setup status...</div>
                     </div>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleConsoleMode(true)"><i class="bi bi-shield-lock"></i> Open Admin Setup</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="showModuleGate()"><i class="bi bi-grid-1x2"></i> Switch to Admin Module</button>
                 </div>
             </div>
 
@@ -775,8 +875,12 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
             </div>
         </div>
 
-        <!-- JOB DISCOVERY PANE (TOP 10 USA PLATFORMS) -->
-        <div class="tab-pane fade" id="discovery-pane">
+        <!-- JOB DISCOVERY PANE (USER Web Tasks step 2) -->
+        <div class="tab-pane fade user-only" id="discovery-pane">
+            <div class="page-title-bar">
+                <h2><i class="bi bi-compass text-primary"></i> Discover Jobs</h2>
+                <span class="badge bg-primary-subtle text-primary">Web Tasks · Step 2</span>
+            </div>
             <div class="card border-0 shadow-sm mb-4">
                 <div class="card-header bg-white fw-bold py-3">
                     <i class="bi bi-globe-americas text-primary"></i> Top 10 USA Job Platforms Adapter Suite
@@ -851,8 +955,12 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
             </div>
         </div>
 
-        <!-- RESUME REVIEW & APPROVALS PANE -->
-        <div class="tab-pane fade" id="review-pane">
+        <!-- RESUME REVIEW & APPROVALS PANE (USER Web Tasks step 3) -->
+        <div class="tab-pane fade user-only" id="review-pane">
+            <div class="page-title-bar">
+                <h2><i class="bi bi-file-earmark-check text-success"></i> Review &amp; Optimize</h2>
+                <span class="badge bg-primary-subtle text-primary">Web Tasks · Step 3</span>
+            </div>
             <div class="card border-0 shadow-sm max-w-900 mx-auto">
                 <div class="card-header bg-white fw-bold py-3 d-flex justify-content-between align-items-center">
                     <span><i class="bi bi-shield-check text-success"></i> Review-First Resume Tailoring & Draft Approval</span>
@@ -960,15 +1068,125 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
             </div>
         </div>
 
-        <!-- KANBAN BOARD PANE -->
-        <div class="tab-pane fade" id="kanban-pane">
+        <!-- KANBAN BOARD PANE (USER Web Tasks step 4) -->
+        <div class="tab-pane fade user-only" id="kanban-pane">
+            <div class="page-title-bar">
+                <h2><i class="bi bi-kanban text-primary"></i> Application Board</h2>
+                <span class="badge bg-primary-subtle text-primary">Web Tasks · Step 4</span>
+            </div>
             <div class="row g-3" id="kanban-board-container">
                 <!-- Columns loaded dynamically -->
             </div>
         </div>
 
+        <!-- CLS TASKS PANE (USER) -->
+        <div class="tab-pane fade user-only" id="cls-pane">
+            <div class="page-title-bar">
+                <h2><i class="bi bi-terminal text-dark"></i> CLS Tasks</h2>
+                <span class="badge bg-dark-subtle text-dark">User · Command helpers</span>
+            </div>
+            <div class="alert alert-secondary small">
+                Safe day-to-day command tasks for users (sync, analyze, list jobs, tailor, reports). Full admin CLI (setup, purge, backups) lives only in the <strong>Admin</strong> module.
+            </div>
+            <div class="row g-3">
+                <div class="col-lg-7">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-header bg-white fw-bold">Common CLS Tasks</div>
+                        <div class="card-body" id="cls-task-cards">
+                            <div class="d-grid gap-2">
+                                <button class="btn btn-outline-primary text-start" onclick="runClsTask('sync-gmail', [])"><i class="bi bi-envelope-at"></i> Sync Gmail Alerts</button>
+                                <button class="btn btn-outline-primary text-start" onclick="runClsTask('analyze', [])"><i class="bi bi-cpu"></i> Re-Score All Jobs</button>
+                                <button class="btn btn-outline-primary text-start" onclick="runClsTask('jobs', [])"><i class="bi bi-list-ul"></i> List Tracked Jobs</button>
+                                <button class="btn btn-outline-primary text-start" onclick="runClsTask('report', [])"><i class="bi bi-graph-up"></i> Pipeline Report</button>
+                                <button class="btn btn-outline-primary text-start" onclick="runClsTask('follow-ups', [])"><i class="bi bi-alarm"></i> Follow-ups Due</button>
+                                <button class="btn btn-outline-secondary text-start" onclick="runClsTask('statuses', [])"><i class="bi bi-tags"></i> List Status Values</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-5">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-header bg-dark text-white fw-bold d-flex justify-content-between">
+                            <span><i class="bi bi-terminal-fill text-success"></i> CLS Output</span>
+                            <button class="btn btn-sm btn-outline-secondary text-white" onclick="clearClsTerminal()">Clear</button>
+                        </div>
+                        <div class="card-body p-2 bg-dark">
+                            <div class="terminal-box" id="cls-terminal-output">Ready. Pick a CLS task on the left.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ADMIN HOME PANE -->
+        <div class="tab-pane fade admin-only" id="admin-home-pane">
+            <div class="page-title-bar">
+                <h2><i class="bi bi-shield-lock text-warning"></i> System Health &amp; Setup</h2>
+                <span class="badge bg-warning-subtle text-dark">Admin · Step 1</span>
+            </div>
+            <div class="alert alert-warning border-0 shadow-sm mb-4">
+                <div class="fw-semibold mb-1">Admin-only workspace</div>
+                <div class="small mb-0">Configure profile, inspect database, and run full CLI tools here. Daily discovery / resume review / application tracking are exclusive to the <strong>User</strong> module.</div>
+            </div>
+            <div class="card border-0 shadow-sm mb-4 border-start border-primary border-4" id="getting-started-flow">
+                <div class="card-body py-3">
+                    <div class="fw-bold mb-2"><i class="bi bi-signpost-split-fill text-primary"></i> Admin setup workflow</div>
+                    <ol class="mb-0 small text-muted ps-3">
+                        <li class="mb-1"><strong class="text-dark">Health</strong> — Confirm DB, Gmail OAuth, and master resume below.</li>
+                        <li class="mb-1"><strong class="text-dark">Profile</strong> — Edit skills/titles and run Profile Optimize.</li>
+                        <li class="mb-1"><strong class="text-dark">Data</strong> — Use Database Explorer for cleanup and inspection.</li>
+                        <li class="mb-1"><strong class="text-dark">CLI</strong> — Use Full CLI Runner for advanced ops (backup, purge, setup).</li>
+                        <li><strong class="text-dark">Handoff</strong> — Switch Module → User for daily Web Tasks.</li>
+                    </ol>
+                </div>
+            </div>
+            <div class="card border-0 shadow-sm mb-4" id="system-health-card">
+                <div class="card-header bg-white fw-bold py-3 d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-heart-pulse text-danger"></i> System Health & Setup Checklist</span>
+                    <button class="btn btn-sm btn-outline-success" onclick="openSeedDemoModal()"><i class="bi bi-database-add"></i> Load Demo Jobs</button>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4">
+                            <div class="small text-muted">Database</div>
+                            <div class="fw-semibold text-truncate" id="health-db-path" title="">-</div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="small text-muted">Gmail OAuth</div>
+                            <div id="health-gmail-status">-</div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="small text-muted">Master Resume</div>
+                            <div id="health-resume-status">-</div>
+                        </div>
+                    </div>
+                    <div class="mb-2 fw-semibold small">Getting started checklist:</div>
+                    <ul class="list-group list-group-flush small" id="onboarding-checklist"></ul>
+                </div>
+            </div>
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white fw-bold py-3">Recent jobs (admin verify)</div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0" id="admin-recent-jobs-table">
+                            <thead class="table-light">
+                                <tr><th>ID</th><th>Score</th><th>Title</th><th>Company</th><th>Platform</th></tr>
+                            </thead>
+                            <tbody>
+                                <tr><td colspan="5" class="text-center py-3 text-muted">Load demo jobs or wait for user imports...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- DATABASE EXPLORER PANE -->
-        <div class="tab-pane fade" id="db-pane">
+        <div class="tab-pane fade admin-only" id="db-pane">
+            <div class="page-title-bar">
+                <h2><i class="bi bi-database-gear text-primary"></i> Database Explorer</h2>
+                <span class="badge bg-warning-subtle text-dark">Admin · Step 3</span>
+            </div>
             <div class="row g-3 mb-4">
                 <div class="col-md-4">
                     <div class="card border-0 shadow-sm h-100">
@@ -1013,7 +1231,11 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
         </div>
 
         <!-- PROFILE & SKILLS EDITOR PANE -->
-        <div class="tab-pane fade" id="profile-pane">
+        <div class="tab-pane fade admin-only" id="profile-pane">
+            <div class="page-title-bar">
+                <h2><i class="bi bi-person-gear text-primary"></i> Profile &amp; Skills</h2>
+                <span class="badge bg-warning-subtle text-dark">Admin · Step 2</span>
+            </div>
             <div class="card border-0 shadow-sm max-w-800 mx-auto">
                 <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <div>
@@ -1184,7 +1406,11 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
         </div>
 
         <!-- CHEAT SHEET & COMMAND EXECUTOR PANE -->
-        <div class="tab-pane fade" id="cheatsheet-pane">
+        <div class="tab-pane fade admin-only" id="cheatsheet-pane">
+            <div class="page-title-bar">
+                <h2><i class="bi bi-terminal text-success"></i> Full CLI Runner</h2>
+                <span class="badge bg-warning-subtle text-dark">Admin · Step 4</span>
+            </div>
             <div class="row">
                 <div class="col-md-7">
                     <div class="d-flex justify-content-between align-items-center mb-3">
@@ -1210,6 +1436,9 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
 
     </div>
 </div>
+</div><!-- /.main-pane-wrap -->
+</main>
+</div><!-- /.app-layout -->
 </div><!-- /#app-shell -->
 
 <!-- IMPORT URL MODAL -->
@@ -1418,7 +1647,8 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
     const BOOKMARKLET_INSTALLED_KEY = 'job_agent_bookmarklet_installed';
     const CONSOLE_MODE_KEY = 'job_agent_console_mode';
     const MODULE_ENTERED_KEY = 'job_agent_module_entered';
-    const ADMIN_TAB_IDS = ['db-tab', 'profile-tab', 'cheatsheet-tab'];
+    const USER_TAB_IDS = ['dashboard-tab', 'discovery-tab', 'review-tab', 'kanban-tab', 'cls-tab'];
+    const ADMIN_TAB_IDS = ['admin-home-tab', 'db-tab', 'profile-tab', 'cheatsheet-tab'];
     let currentOptimizeBundle = null;
 
     function showModuleGate() {
@@ -1432,9 +1662,9 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
         document.body.classList.remove('module-gate-open');
         applyConsoleMode(normalized, true);
         if (normalized === 'admin') {
-            switchTab('profile-tab');
+            navigateTo('admin-home-tab');
         } else {
-            switchTab('dashboard-tab');
+            navigateTo('dashboard-tab');
         }
         if (typeof loadAllData === 'function') loadAllData();
     }
@@ -1445,19 +1675,23 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
         document.body.classList.add(normalized === 'admin' ? 'console-mode-admin' : 'console-mode-user');
         localStorage.setItem(CONSOLE_MODE_KEY, normalized);
         const badge = document.getElementById('console-mode-badge');
-        const toggleLabel = document.getElementById('console-mode-toggle-label');
+        const subtitle = document.getElementById('header-module-subtitle');
+        const sideTitle = document.getElementById('sidebar-module-title');
+        const sideHint = document.getElementById('sidebar-module-hint');
         if (badge) {
             badge.textContent = normalized === 'admin' ? 'Admin Mode' : 'User Mode';
             badge.className = normalized === 'admin' ? 'badge bg-warning text-dark' : 'badge bg-light text-dark';
         }
-        if (toggleLabel) {
-            toggleLabel.textContent = normalized === 'admin' ? 'Switch to User View' : 'Admin Setup';
+        if (subtitle) {
+            subtitle.textContent = normalized === 'admin'
+                ? 'Admin module — setup, profile, database, full CLI'
+                : 'User module — Web Tasks + CLS Tasks';
         }
-        if (normalized === 'user') {
-            const active = document.querySelector('.nav-link.active');
-            if (active && ADMIN_TAB_IDS.includes(active.id)) {
-                switchTab('dashboard-tab');
-            }
+        if (sideTitle) sideTitle.textContent = normalized === 'admin' ? 'ADMIN Module' : 'USER Module';
+        if (sideHint) {
+            sideHint.textContent = normalized === 'admin'
+                ? 'Setup & maintenance only'
+                : 'Step-by-step daily workflow';
         }
         if (persistRemote) {
             fetch('/api/console-settings', {
@@ -1469,18 +1703,14 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
     }
 
     function toggleConsoleMode(forceAdmin) {
-        const next = forceAdmin === true
-            ? 'admin'
-            : (document.body.classList.contains('console-mode-admin') ? 'user' : 'admin');
-        applyConsoleMode(next, true);
+        // Kept for compatibility: always route through module chooser for clear separation.
+        showModuleGate();
     }
 
     function initConsoleMode() {
-        // Always start on the USER / ADMIN module chooser to avoid role confusion.
         showModuleGate();
         const stored = localStorage.getItem(CONSOLE_MODE_KEY);
         if (stored === 'admin' || stored === 'user') {
-            // Prefill badge/labels only; gate stays open until enterModule().
             applyConsoleMode(stored, false);
             return;
         }
@@ -1490,6 +1720,61 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
                 applyConsoleMode(settings.default_mode || 'user', false);
             })
             .catch(() => applyConsoleMode('user', false));
+    }
+
+    function navigateTo(tabId) {
+        const isAdmin = document.body.classList.contains('console-mode-admin');
+        const allowed = isAdmin ? ADMIN_TAB_IDS : USER_TAB_IDS;
+        if (!allowed.includes(tabId)) {
+            tabId = isAdmin ? 'admin-home-tab' : 'dashboard-tab';
+        }
+        document.querySelectorAll('#app-sidebar .sidebar-nav-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.id === tabId);
+        });
+        const bsId = tabId + '-bs';
+        const el = document.getElementById(bsId) || document.getElementById(tabId);
+        if (el && typeof bootstrap !== 'undefined') {
+            bootstrap.Tab.getInstance(el)?.show() || new bootstrap.Tab(el).show();
+        }
+        // Fallback: manually toggle panes if bootstrap tab wiring is incomplete
+        const paneId = (document.getElementById(tabId)?.getAttribute('data-pane')) || '';
+        if (paneId) {
+            document.querySelectorAll('#mainTabsContent > .tab-pane').forEach(p => {
+                const on = p.id === paneId;
+                p.classList.toggle('show', on);
+                p.classList.toggle('active', on);
+            });
+        }
+    }
+
+    function switchTab(tabId) {
+        navigateTo(tabId);
+    }
+
+    function runClsTask(cmd, args) {
+        const term = document.getElementById('cls-terminal-output');
+        if (term) term.innerText = `[CLS] python -m job_agent ${cmd} ${(args || []).join(' ')}...\n\nRunning...`;
+        showProgress(`Running CLS task '${cmd}'...`, 15);
+        fetch('/api/run-command', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({command: cmd, args: args || []})
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (term) term.innerText = `$ ${data.command}\n\n${data.output}`;
+            finishProgress(`CLS task '${cmd}' finished (exit ${data.exit_code})`, data.success);
+            loadAllData();
+        })
+        .catch(err => {
+            if (term) term.innerText = `Error: ${err}`;
+            finishProgress(`CLS task '${cmd}' failed`, false);
+        });
+    }
+
+    function clearClsTerminal() {
+        const term = document.getElementById('cls-terminal-output');
+        if (term) term.innerText = 'Terminal cleared.';
     }
 
     function updateBookmarkletInstallStatus() {
@@ -1589,12 +1874,6 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
                 console.error("Error refreshing dashboard data:", err);
                 finishProgress('Refresh complete', true, 1200);
             });
-    }
-
-    function switchTab(tabId) {
-        const el = document.getElementById(tabId);
-        if (!el || typeof bootstrap === 'undefined') return;
-        bootstrap.Tab.getInstance(el)?.show() || new bootstrap.Tab(el).show();
     }
 
     function fetchWithTimeout(url, options = {}, timeoutMs = 30000) {
@@ -1703,30 +1982,35 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
     }
 
     function renderRecentJobsTable(jobs) {
-        const tbody = document.querySelector('#recent-jobs-table tbody');
-        if (!tbody) return;
-        tbody.innerHTML = '';
-        if (!jobs || jobs.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center py-3 text-muted">No jobs yet. Load demo jobs or run a platform search.</td></tr>';
-            return;
-        }
-        jobs.forEach(j => {
-            const score = j.match_score != null ? Math.round(j.match_score) : '-';
-            const scoreBadge = j.match_score != null
-                ? `<span class="badge ${j.match_score >= 65 ? 'bg-success' : 'bg-secondary'} badge-score">${score}</span>`
-                : '<span class="badge bg-secondary">-</span>';
-            tbody.innerHTML += `
-                <tr>
-                    <td><strong>#${j.id}</strong></td>
-                    <td>${scoreBadge}</td>
-                    <td><strong class="text-primary">${escapeHtml(j.title || '')}</strong></td>
-                    <td>${escapeHtml(j.company || '')}</td>
-                    <td><small class="text-muted">${escapeHtml(j.source_platform || '')}</small></td>
-                    <td>
-                        <button class="btn btn-xs btn-outline-secondary py-0 px-2" onclick="openEditJobModal(${j.id})">Edit</button>
-                    </td>
-                </tr>`;
-        });
+        const fill = (selector, withActions) => {
+            const tbody = document.querySelector(selector);
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            if (!jobs || jobs.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="${withActions ? 6 : 5}" class="text-center py-3 text-muted">No jobs yet. Load demo jobs or run a platform search.</td></tr>`;
+                return;
+            }
+            jobs.forEach(j => {
+                const score = j.match_score != null ? Math.round(j.match_score) : '-';
+                const scoreBadge = j.match_score != null
+                    ? `<span class="badge ${j.match_score >= 65 ? 'bg-success' : 'bg-secondary'} badge-score">${score}</span>`
+                    : '<span class="badge bg-secondary">-</span>';
+                const actions = withActions
+                    ? `<td><button class="btn btn-xs btn-outline-secondary py-0 px-2" onclick="openEditJobModal(${j.id})">Edit</button></td>`
+                    : '';
+                tbody.innerHTML += `
+                    <tr>
+                        <td><strong>#${j.id}</strong></td>
+                        <td>${scoreBadge}</td>
+                        <td><strong class="text-primary">${escapeHtml(j.title || '')}</strong></td>
+                        <td>${escapeHtml(j.company || '')}</td>
+                        <td><small class="text-muted">${escapeHtml(j.source_platform || '')}</small></td>
+                        ${actions}
+                    </tr>`;
+            });
+        };
+        fill('#recent-jobs-table tbody', true);
+        fill('#admin-recent-jobs-table tbody', false);
     }
 
     function renderPlatformSearchResults(reports) {
@@ -2669,7 +2953,12 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
     }
 
     function triggerQuickCommand(cmd, args) {
-        switchTab('cheatsheet-tab');
+        if (document.body.classList.contains('console-mode-user')) {
+            navigateTo('cls-tab');
+            runClsTask(cmd, args || []);
+            return;
+        }
+        navigateTo('cheatsheet-tab');
         executeCommandOnServer(cmd, args);
     }
 

@@ -91,13 +91,14 @@ def test_guided_user_and_admin_walkthrough(page: Page, web_base_url: str) -> Non
         page,
         6,
         TOTAL_STEPS,
-        "Switch to Admin Setup",
-        "Administrators configure the app once in Admin Mode: profile, database, demo data, and CLI tools. "
-        "Click Admin Setup in the header.",
+        "Switch to Admin Module",
+        "Administrators use a separate Admin module for health, profile, database, and full CLI. "
+        "Daily discovery/review stays in User.",
     )
     switch_console_mode(page, "admin")
     expect(page.locator("#system-health-card")).to_be_visible()
     expect(page.locator("#getting-started-flow")).to_be_visible()
+    expect(page.locator("#user-sidebar-nav")).to_be_hidden()
 
     flow_step(
         page,
@@ -106,19 +107,21 @@ def test_guided_user_and_admin_walkthrough(page: Page, web_base_url: str) -> Non
         "Admin — load demo jobs",
         "Insert three sample jobs for training and smoke tests. Safe on a fresh database.",
     )
-    click_tab(page, "#dashboard-tab")
+    click_tab(page, "#admin-home-tab")
     page.get_by_role("button", name="Load Demo Jobs").click()
     page.get_by_role("button", name="Load 3 Demo Jobs").click()
     page.locator("#seedDemoModal").wait_for(state="hidden", timeout=30000)
-    expect(page.locator("#recent-jobs-table tbody tr").first).to_contain_text("#", timeout=20000)
+    expect(page.locator("#admin-recent-jobs-table tbody tr").first).to_contain_text("#", timeout=20000)
 
     flow_step(
         page,
         8,
         TOTAL_STEPS,
-        "Admin — re-score jobs",
-        "Re-Score Jobs updates match scores after profile or resume changes in config.yaml.",
+        "Back to User — re-score jobs",
+        "Daily scoring and job edits happen in the User module Web Tasks dashboard.",
     )
+    switch_console_mode(page, "user")
+    click_tab(page, "#dashboard-tab")
     page.get_by_role("button", name="Re-Score Jobs").click()
     expect(page.locator("#stat-total-jobs")).not_to_have_text("-", timeout=30000)
 
@@ -126,7 +129,7 @@ def test_guided_user_and_admin_walkthrough(page: Page, web_base_url: str) -> Non
         page,
         9,
         TOTAL_STEPS,
-        "Admin — edit job details",
+        "User — edit job details",
         "Fix incomplete imports; saving re-scores automatically for better match accuracy.",
     )
     page.locator("#recent-jobs-table button", has_text="Edit").first.click()
@@ -142,6 +145,7 @@ def test_guided_user_and_admin_walkthrough(page: Page, web_base_url: str) -> Non
         "Admin — Profile & Skills Editor",
         "Configure titles, skills, salary, and exclusions once. Changes persist in config.yaml.",
     )
+    switch_console_mode(page, "admin")
     click_tab(page, "#profile-tab")
     expect(page.locator("#preview-titles")).to_be_attached()
 
