@@ -23,6 +23,7 @@ from job_agent.application_tracker import (
     mark_applied,
     record_parsed_job,
     reject_resume_draft_for_job,
+    update_job_details,
     update_status,
 )
 from job_agent.backup_service import create_backup
@@ -35,8 +36,10 @@ from job_agent.cleanup_service import (
 )
 from job_agent.config import get_settings, load_candidate_profile, save_candidate_profile
 from job_agent.database import ActivityLogRecord, JobRecord, create_db_engine, get_job, init_db, list_jobs, log_activity
+from job_agent.demo_data import seed_demo_jobs
 from job_agent.document_exporter import application_folder
 from job_agent.gmail_client import sync_job_emails
+from job_agent.job_analysis import reanalyze_all_jobs
 from job_agent.logging_config import get_logger
 from job_agent.matcher import score_job
 from job_agent.models import CandidateProfile, ParsedJob
@@ -47,6 +50,7 @@ from job_agent.platform_fetcher import (
     search_and_import_jobs,
 )
 from job_agent.report_service import generate_ics_calendar, generate_pipeline_summary, generate_report
+from job_agent.system_health import get_system_health
 
 logger = get_logger(__name__)
 
@@ -452,6 +456,32 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
                 </div>
             </div>
 
+            <!-- System Health & Onboarding -->
+            <div class="card border-0 shadow-sm mb-4" id="system-health-card">
+                <div class="card-header bg-white fw-bold py-3 d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-heart-pulse text-danger"></i> System Health & Setup Checklist</span>
+                    <button class="btn btn-sm btn-outline-success" onclick="seedDemoJobs()"><i class="bi bi-database-add"></i> Load Demo Jobs</button>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4">
+                            <div class="small text-muted">Database</div>
+                            <div class="fw-semibold text-truncate" id="health-db-path" title="">-</div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="small text-muted">Gmail OAuth</div>
+                            <div id="health-gmail-status">-</div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="small text-muted">Master Resume</div>
+                            <div id="health-resume-status">-</div>
+                        </div>
+                    </div>
+                    <div class="mb-2 fw-semibold small">Getting started checklist:</div>
+                    <ul class="list-group list-group-flush small" id="onboarding-checklist"></ul>
+                </div>
+            </div>
+
             <!-- Chrome Bookmarklet Install Card (always available from dashboard) -->
             <div class="card border-0 shadow-sm mb-4" id="bookmarklet-install-card">
                 <div class="card-body d-flex flex-wrap gap-3 align-items-center justify-content-between py-3">
@@ -486,8 +516,8 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
                 <div class="col-md-8">
                     <div class="card border-0 shadow-sm mb-4">
                         <div class="card-header bg-white fw-bold d-flex justify-content-between align-items-center py-3">
-                            <span><i class="bi bi-star-fill text-warning"></i> High-Match Opportunities</span>
-                            <button class="btn btn-sm btn-outline-primary" onclick="triggerQuickCommand('analyze', [])"><i class="bi bi-cpu"></i> Re-Score Jobs</button>
+                            <span><i class="bi bi-star-fill text-warning"></i> High-Match Opportunities <small class="text-muted fw-normal">(score ≥ 65)</small></span>
+                            <button class="btn btn-sm btn-outline-primary" onclick="runAnalyzeJobs()"><i class="bi bi-cpu"></i> Re-Score Jobs</button>
                         </div>
                         <div class="card-body p-0">
                             <div class="table-responsive">
@@ -504,6 +534,32 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
                                     </thead>
                                     <tbody>
                                         <tr><td colspan="6" class="text-center py-3 text-muted">Loading high score jobs...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card border-0 shadow-sm mb-4">
+                        <div class="card-header bg-white fw-bold d-flex justify-content-between align-items-center py-3">
+                            <span><i class="bi bi-clock-history text-primary"></i> Recently Discovered Jobs</span>
+                            <small class="text-muted">All scores · newest first</small>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle mb-0" id="recent-jobs-table">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>Score</th>
+                                            <th>Title</th>
+                                            <th>Company</th>
+                                            <th>Platform</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr><td colspan="6" class="text-center py-3 text-muted">Loading recent jobs...</td></tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -550,6 +606,26 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
                             <span class="small text-muted">· up to 3 jobs per site</span>
                         </div>
                         <button class="btn btn-primary" id="btn-find-jobs-now" onclick="runTop10JobSearch()"><i class="bi bi-search"></i> Find Jobs Now</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm mb-4" id="platform-search-results-card" style="display:none;">
+                <div class="card-header bg-white fw-bold py-3"><i class="bi bi-bar-chart-steps text-info"></i> Last Platform Search Results</div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0" id="platform-search-results-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Platform</th>
+                                    <th>Tier</th>
+                                    <th>Status</th>
+                                    <th>Imported</th>
+                                    <th>Message</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
                     </div>
                 </div>
             </div>
@@ -915,6 +991,42 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
     </div>
 </div>
 
+<!-- EDIT JOB MODAL -->
+<div class="modal fade" id="editJobModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-light">
+                <h5 class="modal-title fw-bold"><i class="bi bi-pencil-square"></i> Edit Job Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit-job-id">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Title</label>
+                    <input type="text" class="form-control" id="edit-job-title">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Company</label>
+                    <input type="text" class="form-control" id="edit-job-company">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Location</label>
+                    <input type="text" class="form-control" id="edit-job-location">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Description</label>
+                    <textarea class="form-control" id="edit-job-description" rows="6"></textarea>
+                    <div class="form-text">Improve incomplete imports for better match scores.</div>
+                </div>
+            </div>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="saveJobEdits()"><i class="bi bi-save"></i> Save & Re-Score</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- APPROVE DRAFT CONFIRMATION MODAL -->
 <div class="modal fade" id="approveDraftModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
@@ -1114,11 +1226,15 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
         TOP_10.forEach(p => {
             const checked = DEFAULT_PLATFORMS.includes(p) ? 'checked' : '';
             const label = formatPlatformLabel(p);
+            const tierBadge = DEFAULT_PLATFORMS.includes(p)
+                ? '<span class="badge bg-success fs-9 mt-1">Recommended</span>'
+                : '<span class="badge bg-secondary fs-9 mt-1">Experimental</span>';
             grid.innerHTML += `
                 <div class="col">
                     <label class="platform-card shadow-sm d-block mb-0 ${DEFAULT_PLATFORMS.includes(p) ? 'is-selected' : ''}" for="platform-cb-${p}">
                         <input type="checkbox" class="form-check-input platform-checkbox" id="platform-cb-${p}" value="${p}" ${checked} onchange="updatePlatformSelectionUI()">
                         <div class="fw-bold text-dark fs-8">${label}</div>
+                        ${tierBadge}
                     </label>
                 </div>`;
         });
@@ -1168,7 +1284,10 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
                     hsBody.innerHTML = '';
                     const highScores = data.high_score_jobs || [];
                     if (highScores.length === 0) {
-                        hsBody.innerHTML = '<tr><td colspan="6" class="text-center py-3 text-muted">No high-score jobs. Click "Find Jobs Now".</td></tr>';
+                        const emptyMsg = (data.total_jobs || 0) === 0
+                            ? 'No jobs yet. Click <strong>Load Demo Jobs</strong> or run a platform search.'
+                            : 'No jobs scored ≥ 65 yet. Check Recently Discovered Jobs below or run Re-Score Jobs.';
+                        hsBody.innerHTML = `<tr><td colspan="6" class="text-center py-3 text-muted">${emptyMsg}</td></tr>`;
                     } else {
                         highScores.slice(0, 8).forEach(j => {
                             const score = j.match_score != null ? Math.round(j.match_score) : 0;
@@ -1189,6 +1308,9 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
                         });
                     }
                 }
+
+                renderRecentJobsTable(data.recent_jobs || []);
+                renderSystemHealth(data.health || {});
             })
             .catch(err => {
                 console.error("Error in fetchStats:", err);
@@ -1200,6 +1322,157 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
                     hsBody.innerHTML = `<tr><td colspan="6" class="text-center py-3 text-danger">${hint}</td></tr>`;
                 }
             });
+    }
+
+    function renderSystemHealth(health) {
+        const dbPath = document.getElementById('health-db-path');
+        if (dbPath) {
+            dbPath.innerText = health.database_path || '-';
+            dbPath.title = health.database_path || '';
+        }
+        const gmailEl = document.getElementById('health-gmail-status');
+        if (gmailEl && health.gmail) {
+            const g = health.gmail;
+            const badge = g.status === 'token_present' ? 'success' : (g.status === 'needs_auth' ? 'warning' : 'secondary');
+            gmailEl.innerHTML = `<span class="badge bg-${badge}">${escapeHtml(g.status.replace('_', ' '))}</span> <small class="text-muted">${escapeHtml(g.message || '')}</small>`;
+        }
+        const resumeEl = document.getElementById('health-resume-status');
+        if (resumeEl && health.master_resume) {
+            const r = health.master_resume;
+            const badge = r.status === 'ready' ? 'success' : (r.status === 'missing_file' ? 'danger' : 'secondary');
+            resumeEl.innerHTML = `<span class="badge bg-${badge}">${escapeHtml(r.status.replace('_', ' '))}</span> <small class="text-muted">${escapeHtml(r.message || '')}</small>`;
+        }
+        const checklist = document.getElementById('onboarding-checklist');
+        if (checklist && health.onboarding_steps) {
+            checklist.innerHTML = health.onboarding_steps.map(step => `
+                <li class="list-group-item d-flex align-items-center gap-2 py-2">
+                    <i class="bi ${step.done ? 'bi-check-circle-fill text-success' : 'bi-circle text-muted'}"></i>
+                    <span>${escapeHtml(step.label)}</span>
+                </li>`).join('');
+        }
+    }
+
+    function renderRecentJobsTable(jobs) {
+        const tbody = document.querySelector('#recent-jobs-table tbody');
+        if (!tbody) return;
+        tbody.innerHTML = '';
+        if (!jobs || jobs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center py-3 text-muted">No jobs yet. Load demo jobs or run a platform search.</td></tr>';
+            return;
+        }
+        jobs.forEach(j => {
+            const score = j.match_score != null ? Math.round(j.match_score) : '-';
+            const scoreBadge = j.match_score != null
+                ? `<span class="badge ${j.match_score >= 65 ? 'bg-success' : 'bg-secondary'} badge-score">${score}</span>`
+                : '<span class="badge bg-secondary">-</span>';
+            tbody.innerHTML += `
+                <tr>
+                    <td><strong>#${j.id}</strong></td>
+                    <td>${scoreBadge}</td>
+                    <td><strong class="text-primary">${escapeHtml(j.title || '')}</strong></td>
+                    <td>${escapeHtml(j.company || '')}</td>
+                    <td><small class="text-muted">${escapeHtml(j.source_platform || '')}</small></td>
+                    <td>
+                        <button class="btn btn-xs btn-outline-secondary py-0 px-2" onclick="openEditJobModal(${j.id})">Edit</button>
+                    </td>
+                </tr>`;
+        });
+    }
+
+    function renderPlatformSearchResults(reports) {
+        const card = document.getElementById('platform-search-results-card');
+        const tbody = document.querySelector('#platform-search-results-table tbody');
+        if (!card || !tbody) return;
+        if (!reports || reports.length === 0) {
+            card.style.display = 'none';
+            return;
+        }
+        card.style.display = '';
+        tbody.innerHTML = reports.map(r => {
+            const statusBadge = r.status === 'success' ? 'success' : (r.status === 'empty' ? 'warning' : 'danger');
+            const tierBadge = r.tier === 'recommended' ? 'primary' : 'secondary';
+            return `<tr>
+                <td><strong>${escapeHtml(formatPlatformLabel(r.platform))}</strong></td>
+                <td><span class="badge bg-${tierBadge}">${escapeHtml(r.tier)}</span></td>
+                <td><span class="badge bg-${statusBadge}">${escapeHtml(r.status)}</span></td>
+                <td>${r.imported != null ? r.imported : 0}</td>
+                <td class="small text-muted">${escapeHtml(r.message || '')}</td>
+            </tr>`;
+        }).join('');
+    }
+
+    function runAnalyzeJobs() {
+        showProgress('Re-scoring all jobs against your profile...', 25);
+        return fetchWithTimeout('/api/jobs/analyze', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}' }, 120000)
+            .then(res => {
+                if (!res.ok) throw new Error('HTTP error ' + res.status);
+                return res.json();
+            })
+            .then(data => {
+                finishProgress(`Re-scored ${data.jobs_updated || 0} job(s)`, true);
+                loadAllData();
+            })
+            .catch(err => {
+                finishProgress('Analyze failed', false);
+                alert('Analyze failed: ' + err);
+            });
+    }
+
+    function seedDemoJobs() {
+        if (!confirm('Load 3 sample demo jobs for testing?')) return;
+        showProgress('Seeding demo jobs...', 20);
+        fetch('/api/jobs/seed-demo', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}' })
+            .then(res => res.json())
+            .then(data => {
+                finishProgress(`Loaded ${data.jobs_seeded || 0} demo jobs`, true);
+                alert(`Demo jobs loaded: ${(data.job_ids || []).map(id => '#' + id).join(', ')}`);
+                loadAllData();
+            })
+            .catch(err => {
+                finishProgress('Demo seed failed', false);
+                alert('Demo seed failed: ' + err);
+            });
+    }
+
+    function openEditJobModal(jobId) {
+        fetch(`/api/jobs/${jobId}`)
+            .then(res => res.json())
+            .then(job => {
+                document.getElementById('edit-job-id').value = job.id;
+                document.getElementById('edit-job-title').value = job.title || '';
+                document.getElementById('edit-job-company').value = job.company || '';
+                document.getElementById('edit-job-location').value = job.location || '';
+                document.getElementById('edit-job-description').value = job.description || '';
+                new bootstrap.Modal(document.getElementById('editJobModal')).show();
+            })
+            .catch(err => alert('Failed to load job: ' + err));
+    }
+
+    function saveJobEdits() {
+        const jobId = parseInt(document.getElementById('edit-job-id').value);
+        const payload = {
+            job_id: jobId,
+            title: document.getElementById('edit-job-title').value,
+            company: document.getElementById('edit-job-company').value,
+            location: document.getElementById('edit-job-location').value,
+            description: document.getElementById('edit-job-description').value,
+        };
+        showProgress(`Saving job #${jobId} and re-scoring...`, 30);
+        fetch('/api/jobs/update', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        })
+        .then(res => res.json())
+        .then(data => {
+            bootstrap.Modal.getInstance(document.getElementById('editJobModal'))?.hide();
+            finishProgress('Job updated and re-scored', true);
+            loadAllData();
+        })
+        .catch(err => {
+            finishProgress('Save failed', false);
+            alert('Save failed: ' + err);
+        });
     }
 
     function fetchJobs() {
@@ -1241,6 +1514,7 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
                     <td><small class="text-muted">${j.source_platform}</small></td>
                     <td>
                         <div class="btn-group btn-group-sm">
+                            <button class="btn btn-outline-secondary" onclick="openEditJobModal(${j.id})"><i class="bi bi-pencil"></i></button>
                             <button class="btn btn-outline-primary" onclick="createDraftForJob('${j.id}')"><i class="bi bi-file-earmark-diff"></i> Draft Resume</button>
                             <button class="btn btn-outline-success" onclick="selectForReview('${j.id}')"><i class="bi bi-check-lg"></i> Review</button>
                         </div>
@@ -1454,17 +1728,25 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
             return res.json();
         })
         .then(data => {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="bi bi-search"></i> Find Jobs Now';
-            const count = data.jobs_recorded != null ? data.jobs_recorded : 0;
-            const searched = (data.platforms_searched || selectedPlatforms).map(formatPlatformLabel).join(', ');
-            finishProgress(`Search complete! Discovered ${count} jobs.`, true);
-            if (count === 0) {
-                alert(`No jobs found on: ${searched}\n\nTry different platforms (Dice, ZipRecruiter, Indeed are recommended) or update target titles/skills in Profile & Skills Editor.`);
-            } else {
-                alert(`✅ Platform Search Complete!\n\nDiscovered ${count} jobs from:\n${searched}`);
+            renderPlatformSearchResults(data.platform_reports || []);
+            const afterSearch = () => {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-search"></i> Find Jobs Now';
+                const count = data.jobs_recorded != null ? data.jobs_recorded : 0;
+                const searched = (data.platforms_searched || selectedPlatforms).map(formatPlatformLabel).join(', ');
+                finishProgress(`Search complete! Discovered ${count} jobs.`, true);
+                if (count === 0) {
+                    alert(`No jobs imported from selected platforms.\n\nSee "Last Platform Search Results" for per-site status.\n\nTip: Use Dice, ZipRecruiter, Indeed (recommended), Load Demo Jobs, or Import URL.`);
+                } else {
+                    alert(`✅ Platform Search Complete!\n\nDiscovered ${count} jobs from:\n${searched}\n\nRunning score analyzer next...`);
+                }
+                loadAllData();
+            };
+            if ((data.jobs_recorded || 0) > 0) {
+                showProgress('Running score analyzer on discovered jobs...', 70);
+                return runAnalyzeJobs().finally(afterSearch);
             }
-            loadAllData();
+            afterSearch();
         })
         .catch(err => {
             btn.disabled = false;
@@ -2031,10 +2313,23 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
                         {"id": j.id, "title": j.title, "company": j.company, "match_score": j.match_score, "source_platform": j.source_platform}
                         for j in summary["high_score_jobs"]
                     ]
+                    recent = list_jobs(session, limit=8)
+                    recent_jobs = [
+                        {
+                            "id": j.id,
+                            "title": j.title,
+                            "company": j.company,
+                            "match_score": j.match_score,
+                            "source_platform": j.source_platform,
+                        }
+                        for j in recent
+                    ]
                     payload = {
                         "total_jobs": summary["total_jobs"],
                         "status_counts": summary["status_counts"],
                         "high_score_jobs": high_scores,
+                        "recent_jobs": recent_jobs,
+                        "health": get_system_health(settings, session),
                     }
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json")
@@ -2068,6 +2363,39 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
                     self.wfile.write(json.dumps(act_list).encode("utf-8"))
                 finally:
                     session.close()
+
+            elif url_path.startswith("/api/jobs/") and url_path.count("/") == 3:
+                job_id_str = url_path.rsplit("/", 1)[-1]
+                if job_id_str.isdigit():
+                    job_id = int(job_id_str)
+                    settings = get_settings()
+                    SessionLocal = init_db(settings.database_path)
+                    session = SessionLocal()
+                    try:
+                        j = get_job(session, job_id)
+                        if not j:
+                            self.send_error(404, "Job not found")
+                            return
+                        payload = {
+                            "id": j.id,
+                            "title": j.title,
+                            "company": j.company,
+                            "location": j.location,
+                            "description": j.description,
+                            "status": j.status,
+                            "match_score": j.match_score,
+                            "source_platform": j.source_platform,
+                            "job_url": j.job_url,
+                        }
+                        self.send_response(200)
+                        self.send_header("Content-Type", "application/json")
+                        self._set_cors_headers()
+                        self.end_headers()
+                        self.wfile.write(json.dumps(payload).encode("utf-8"))
+                    finally:
+                        session.close()
+                else:
+                    self.send_error(404, "Page not found")
 
             elif url_path == "/api/jobs":
                 settings = get_settings()
@@ -2255,15 +2583,105 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
                 SessionLocal = init_db(settings.database_path)
                 session = SessionLocal()
                 try:
-                    results = search_and_import_jobs(
+                    import_result = search_and_import_jobs(
                         session, profile, platforms=platforms, limit_per_platform=limit
                     )
+                    platform_reports = [
+                        {
+                            "platform": r.platform,
+                            "fetched": r.fetched,
+                            "imported": r.imported,
+                            "status": r.status,
+                            "message": r.message,
+                            "tier": r.tier,
+                        }
+                        for r in import_result.platform_reports
+                    ]
                     payload = {
                         "status": "success",
-                        "jobs_recorded": len(results),
+                        "jobs_recorded": import_result.jobs_recorded,
                         "platforms_searched": list(platforms),
                         "limit_per_platform": limit,
+                        "platform_reports": platform_reports,
                     }
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self._set_cors_headers()
+                    self.end_headers()
+                    self.wfile.write(json.dumps(payload).encode("utf-8"))
+                finally:
+                    session.close()
+
+            elif url_path == "/api/jobs/analyze":
+                settings = get_settings()
+                profile = load_candidate_profile()
+                SessionLocal = init_db(settings.database_path)
+                session = SessionLocal()
+                try:
+                    updated = reanalyze_all_jobs(session, profile)
+                    payload = {"status": "success", "jobs_updated": updated}
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self._set_cors_headers()
+                    self.end_headers()
+                    self.wfile.write(json.dumps(payload).encode("utf-8"))
+                finally:
+                    session.close()
+
+            elif url_path == "/api/jobs/seed-demo":
+                settings = get_settings()
+                profile = load_candidate_profile()
+                SessionLocal = init_db(settings.database_path)
+                session = SessionLocal()
+                try:
+                    job_ids = seed_demo_jobs(session, profile)
+                    reanalyze_all_jobs(session, profile)
+                    payload = {"status": "success", "jobs_seeded": len(job_ids), "job_ids": job_ids}
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self._set_cors_headers()
+                    self.end_headers()
+                    self.wfile.write(json.dumps(payload).encode("utf-8"))
+                finally:
+                    session.close()
+
+            elif url_path == "/api/jobs/update":
+                data = json.loads(body)
+                job_id = int(data.get("job_id") or 0)
+                settings = get_settings()
+                profile = load_candidate_profile()
+                SessionLocal = init_db(settings.database_path)
+                session = SessionLocal()
+                try:
+                    job = update_job_details(
+                        session,
+                        job_id,
+                        title=data.get("title"),
+                        company=data.get("company"),
+                        description=data.get("description"),
+                        location=data.get("location"),
+                        salary=data.get("salary"),
+                        user_notes=data.get("user_notes"),
+                    )
+                    parsed = ParsedJob(
+                        title=job.title,
+                        company=job.company,
+                        location=job.location,
+                        source_platform=job.source_platform,
+                        salary=job.salary,
+                        employment_type=job.employment_type,
+                        job_url=job.job_url,
+                        description=job.description or "",
+                    )
+                    match = score_job(parsed, profile)
+                    job.match_score = match.score
+                    job.recommendation = match.recommendation.value
+                    job.match_summary = match.summary
+                    job.matched_skills = ", ".join(match.matched_skills)
+                    job.missing_skills = ", ".join(match.missing_skills)
+                    job.concerns = "; ".join(match.concerns)
+                    session.commit()
+                    payload = {"status": "success", "job_id": job.id, "match_score": job.match_score}
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json")
                     self._set_cors_headers()

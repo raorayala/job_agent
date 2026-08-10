@@ -41,6 +41,8 @@ def test_get_index_html(web_server):
         assert 'class="form-check-input platform-checkbox"' in html
         assert "selectRecommendedPlatforms" in html
         assert "Top 3 Recommended" in html
+        assert 'id="system-health-card"' in html
+        assert 'id="recent-jobs-table"' in html
 
 
 def test_get_api_commands(web_server):
@@ -229,3 +231,27 @@ def test_post_jobs_find_selected_platforms(web_server):
         assert res["platforms_searched"] == ["dice"]
         assert res["limit_per_platform"] == 3
         assert "jobs_recorded" in res
+        assert "platform_reports" in res
+
+
+def test_get_api_stats_includes_health(web_server):
+    req = urllib.request.Request(f"{web_server}/api/stats")
+    with urllib.request.urlopen(req, timeout=5) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+        assert "health" in data
+        assert "recent_jobs" in data
+        assert "database_path" in data["health"]
+
+
+def test_post_seed_demo(web_server):
+    payload = json.dumps({}).encode("utf-8")
+    req = urllib.request.Request(
+        f"{web_server}/api/jobs/seed-demo",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+        assert data["status"] == "success"
+        assert data["jobs_seeded"] == 3

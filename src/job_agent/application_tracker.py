@@ -179,6 +179,41 @@ def update_status(
     return job
 
 
+def update_job_details(
+    session: Session,
+    job_id: int,
+    *,
+    title: str | None = None,
+    company: str | None = None,
+    description: str | None = None,
+    location: str | None = None,
+    salary: str | None = None,
+    user_notes: str | None = None,
+) -> JobRecord:
+    """Update editable job fields (e.g. after incomplete URL import)."""
+    job = get_job(session, job_id)
+    if job is None:
+        raise LookupError(f"Job id {job_id} not found")
+
+    if title is not None:
+        job.title = title
+    if company is not None:
+        job.company = company
+    if description is not None:
+        job.description = description
+    if location is not None:
+        job.location = location
+    if salary is not None:
+        job.salary = salary
+    if user_notes is not None:
+        job.user_notes = user_notes
+
+    session.commit()
+    session.refresh(job)
+    logger.info("Updated job #%d details", job_id)
+    return job
+
+
 def mark_applied(
     session: Session,
     job_id: int,

@@ -30,9 +30,11 @@ from job_agent.config import (
     load_yaml_config,
 )
 from job_agent.contact_service import add_contact, list_contacts
-from job_agent.database import JobRecord, get_job, init_db, list_jobs
+from job_agent.database import JobRecord, get_job, init_db, list_jobs, log_activity
+from job_agent.demo_data import seed_demo_jobs
 from job_agent.gmail_client import GmailNotConfiguredError, sync_job_emails
 from job_agent.interview_service import add_interview, list_interviews, prepare_interview_doc
+from job_agent.job_analysis import reanalyze_all_jobs
 from job_agent.logging_config import setup_logging
 from job_agent.matcher import recommendation_for_score, score_job
 from job_agent.models import ApplicationStatus, MatchExplanation, ParsedJob, Recommendation
@@ -192,36 +194,14 @@ def analyze_cmd(
 
     session = SessionLocal()
     try:
-        jobs = list_jobs(session, limit=500)
-        if not jobs:
-            console.print("No jobs found in database to analyze. Run [bold]sync-gmail[/bold] first.")
+        updated_count = reanalyze_all_jobs(session, profile)
+        if updated_count == 0:
+            console.print("No jobs found in database to analyze. Run [bold]sync-gmail[/bold] or [bold]seed-demo[/bold] first.")
             raise typer.Exit(code=0)
 
-        updated_count = 0
-        for job in jobs:
-            parsed = ParsedJob(
-                title=job.title,
-                company=job.company,
-                location=job.location,
-                source_platform=job.source_platform,
-                salary=job.salary,
-                employment_type=job.employment_type,
-                job_url=job.job_url,
-                description=job.description or "",
-                gmail_message_id=job.gmail_message_id,
-            )
-            match = score_job(parsed, profile)
-            job.match_score = match.score
-            job.recommendation = match.recommendation.value
-            job.match_summary = match.summary
-            job.matched_skills = ", ".join(match.matched_skills)
-            job.missing_skills = ", ".join(match.missing_skills)
-            job.concerns = "; ".join(match.concerns)
-            updated_count += 1
-
-        session.commit()
         console.print(f"[green]Re-analyzed {updated_count} job(s) in database.[/green]")
 
+        jobs = list_jobs(session, limit=500)
         filtered = [
             j for j in jobs if min_score is None or (j.match_score and j.match_score >= min_score)
         ]
@@ -629,12 +609,30 @@ def fetch_jobs_cmd(
 
     console.print(f"[cyan]Fetching jobs ({limit} per platform, posted in last 1-2 weeks) from: {', '.join(platform_list)}...[/cyan]")
     try:
-        results = search_and_import_jobs(
+        import_result = search_and_import_jobs(
             session=session,
             profile=profile,
             platforms=platform_list,
             limit_per_platform=limit,
         )
+        results = import_result.results
+
+        if import_result.platform_reports:
+            p_table = Table(title="Platform Search Results")
+            p_table.add_column("Platform")
+            p_table.add_column("Tier")
+            p_table.add_column("Status")
+            p_table.add_column("Imported", justify="right")
+            p_table.add_column("Message")
+            for report in import_result.platform_reports:
+                p_table.add_row(
+                    report.platform,
+                    report.tier,
+                    report.status,
+                    str(report.imported),
+                    report.message[:60],
+                )
+            console.print(p_table)
 
         if not results:
             console.print("[yellow]No new jobs found from direct platform search.[/yellow]")
@@ -925,6 +923,25 @@ def add_job_cmd(
             f" Score: {match.score:.0f}/100 ({match.recommendation.value})\n"
             f" Duplicate Status: {'Duplicate (' + dupe.reason + ')' if dupe.is_duplicate else 'Unique'}"
         )
+    finally:
+        session.close()
+
+
+@app.command("seed-demo")
+def seed_demo_cmd(
+    analyze: bool = typer.Option(True, "--analyze/--no-analyze", help="Re-score demo jobs after seeding"),
+) -> None:
+    """Insert sample jobs for dashboard smoke testing."""
+    _, SessionLocal = _init_context()
+    profile = load_candidate_profile()
+    session = SessionLocal()
+    try:
+        job_ids = seed_demo_jobs(session, profile)
+        console.print(f"[bold green]Seeded {len(job_ids)} demo jobs:[/bold green] {', '.join(f'#{i}' for i in job_ids)}")
+        if analyze:
+            count = reanalyze_all_jobs(session, profile)
+            console.print(f"[green]Re-analyzed {count} job(s).[/green]")
+        console.print("[cyan]Open the web dashboard and click Refresh to view demo data.[/cyan]")
     finally:
         session.close()
 

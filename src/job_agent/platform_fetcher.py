@@ -7,6 +7,7 @@ import re
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
+from dataclasses import dataclass, field
 from typing import Any, Sequence
 
 from bs4 import BeautifulSoup
@@ -337,12 +338,52 @@ def import_job_from_url(url: str) -> ParsedJob:
     )
 
 
+@dataclass
+class PlatformSearchReport:
+    platform: str
+    fetched: int
+    imported: int
+    status: str
+    message: str
+    tier: str
+
+
+@dataclass
+class SearchImportResult:
+    results: list[tuple[Any, Any, Any]] = field(default_factory=list)
+    platform_reports: list[PlatformSearchReport] = field(default_factory=list)
+
+    @property
+    def jobs_recorded(self) -> int:
+        return len(self.results)
+
+
+def _fetch_jobs_for_platform(
+    plat_clean: str,
+    query: str,
+    location: str,
+    limit: int,
+) -> tuple[list[ParsedJob], str | None]:
+    """Fetch listings from one platform. Returns (jobs, error_message)."""
+    try:
+        if plat_clean == "dice":
+            return fetch_dice_jobs(query=query, location=location, limit=limit), None
+        if plat_clean == "ziprecruiter":
+            return fetch_ziprecruiter_jobs(query=query, location=location, limit=limit), None
+        if plat_clean in TOP_10_PLATFORMS:
+            return fetch_generic_platform_jobs(plat_clean, query=query, location=location, limit=limit), None
+        return [], f"Unsupported platform '{plat_clean}'"
+    except Exception as exc:
+        logger.warning("Platform fetch failed for %s: %s", plat_clean, exc)
+        return [], str(exc)
+
+
 def search_and_import_jobs(
     session: Any,
     profile: CandidateProfile,
     platforms: Sequence[str] = DEFAULT_RECOMMENDED_PLATFORMS,
     limit_per_platform: int = DEFAULT_LIMIT_PER_PLATFORM,
-) -> list[tuple[Any, Any, Any]]:
+) -> SearchImportResult:
     """
     Search selected job platforms using target titles and skills from config.yaml,
     enforcing a per-platform result limit (default 3) and posting age filter (last 1-2 weeks).
@@ -354,28 +395,47 @@ def search_and_import_jobs(
 
     logger.info("Searching platforms %s for query: '%s' (location: %s)", platforms, query, location)
 
-    fetched_jobs: list[ParsedJob] = []
+    import_result = SearchImportResult()
 
     for plat in platforms:
         plat_clean = plat.lower().strip()
-        if plat_clean == "dice":
-            fetched_jobs.extend(fetch_dice_jobs(query=query, location=location, limit=limit_per_platform))
-        elif plat_clean == "ziprecruiter":
-            fetched_jobs.extend(fetch_ziprecruiter_jobs(query=query, location=location, limit=limit_per_platform))
-        elif plat_clean in TOP_10_PLATFORMS:
-            fetched_jobs.extend(fetch_generic_platform_jobs(plat_clean, query=query, location=location, limit=limit_per_platform))
+        tier = "recommended" if plat_clean in DEFAULT_RECOMMENDED_PLATFORMS else "experimental"
+        jobs, error = _fetch_jobs_for_platform(plat_clean, query, location, limit_per_platform)
+        imported = 0
+        for job in jobs:
+            res = record_parsed_job(session, job, profile)
+            import_result.results.append(res)
+            imported += 1
 
-    recorded_results: list[tuple[Any, Any, Any]] = []
-    for job in fetched_jobs:
-        res = record_parsed_job(session, job, profile)
-        recorded_results.append(res)
+        if error:
+            status, message = "error", error
+        elif imported == 0:
+            status = "empty"
+            message = (
+                "No listings returned. Recommended platforms (Dice, ZipRecruiter, Indeed) work best; "
+                "others may block automated search — try bookmarklet or URL import."
+            )
+        else:
+            status = "success"
+            message = f"Imported {imported} job(s)"
+
+        import_result.platform_reports.append(
+            PlatformSearchReport(
+                platform=plat_clean,
+                fetched=len(jobs),
+                imported=imported,
+                status=status,
+                message=message,
+                tier=tier,
+            )
+        )
 
     log_activity(
         session,
         event_type="discovery",
-        title=f"Platform Search Discovered {len(recorded_results)} Jobs",
+        title=f"Platform Search Discovered {import_result.jobs_recorded} Jobs",
         description=f"Searched platforms {', '.join(platforms)} for '{query}' (limit {limit_per_platform} per platform, < 14 days old).",
     )
 
-    logger.info("Recorded %d jobs from top platform search.", len(recorded_results))
-    return recorded_results
+    logger.info("Recorded %d jobs from platform search.", import_result.jobs_recorded)
+    return import_result

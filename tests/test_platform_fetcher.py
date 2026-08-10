@@ -26,5 +26,6 @@ def test_search_and_import_jobs(tmp_path: Path) -> None:
 
     profile = CandidateProfile(target_titles=["Java Developer"], required_skills=["Java"])
     results = search_and_import_jobs(session, profile, platforms=["dice"], limit_per_platform=5)
-    assert isinstance(results, list)
+    assert isinstance(results.platform_reports, list)
+    assert results.jobs_recorded >= 0
     session.close()
