@@ -94,6 +94,7 @@ platforms:
 profile:
   target_titles:
   - Staff Software Engineer
+  - Tech Lead
   industries:
   - Financial Services
   - Payments, Fintech
@@ -104,45 +105,20 @@ profile:
   required_skills:
   - Python
   - Docker
+  - SQL
   preferred_skills:
+  - Kubernetes
   - Kafka
-  - JMS
-  - MongoDB
-  - Oracle
-  - Jenkins
-  - API Gateway
-  - Splunk
-  - Prometheus
-  - Grafana
-  - PostgreSQL
-  - Oracle
-  - OAuth2
-  - JWT
-  - BDD
-  - TDD
-  - incident management
-  - payments
-  - PCI compliance
-  - PII compliance
-  - SOX compliance
-  - identity
-  - KYC
-  - application security
-  - observability
-  - high-volume distributed systems
   years_experience: 8
   locations:
-  - All Remote jobs
-  - Bay Area
-  - SanFrancisco
-  - Texas
-  - Virginia
+  - Remote
+  - San Francisco, CA
   work_modes:
   - remote
   - hybrid
   - on-site
-  salary_min: 130000
-  salary_max: 180000
+  salary_min: 140000
+  salary_max: 200000
   salary_currency: USD
   employment_types:
   - full-time

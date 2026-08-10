@@ -22,6 +22,14 @@ def test_get_index_html(web_server):
         html = resp.read().decode("utf-8")
         assert "Job Search Agent Web Console" in html
         assert "CLI Command Cheat Sheet" in html
+        assert "Profile &amp; Skills Editor" in html or "Profile & Skills Editor" in html
+        assert "Optional &amp; Synced with <code>config.yaml</code>" in html or "Optional & Synced with" in html
+        assert 'id="preview-titles"' in html
+        assert 'id="preview-req-skills"' in html
+        assert 'id="preview-pref-skills"' in html
+        assert 'id="preview-locations"' in html
+        assert 'id="preview-salary"' in html
+        assert 'id="preview-salary-max"' in html
 
 
 def test_get_api_commands(web_server):
@@ -113,10 +121,19 @@ def test_get_and_post_profile(web_server):
         assert resp.status == 200
         p = json.loads(resp.read().decode("utf-8"))
         assert "target_titles" in p
+        assert "required_skills" in p
+        assert "preferred_skills" in p
+        assert "locations" in p
+        assert "salary_min" in p
+        assert "salary_max" in p
 
     payload = json.dumps({
-        "target_titles": ["Staff Software Engineer"],
-        "required_skills": ["Python", "Docker"],
+        "target_titles": ["Staff Software Engineer", "Tech Lead"],
+        "required_skills": ["Python", "Docker", "SQL"],
+        "preferred_skills": ["Kubernetes", "Kafka"],
+        "locations": ["Remote", "San Francisco, CA"],
+        "salary_min": 140000,
+        "salary_max": 200000,
         "years_experience": 8,
     }).encode("utf-8")
     req_post = urllib.request.Request(
@@ -129,6 +146,14 @@ def test_get_and_post_profile(web_server):
         assert resp.status == 200
         res = json.loads(resp.read().decode("utf-8"))
         assert res["status"] == "success"
+
+    # Verify updated values persist via GET
+    with urllib.request.urlopen(req_get, timeout=5) as resp:
+        p_updated = json.loads(resp.read().decode("utf-8"))
+        assert "Staff Software Engineer" in p_updated["target_titles"]
+        assert "Tech Lead" in p_updated["target_titles"]
+        assert p_updated["salary_min"] == 140000
+        assert p_updated["salary_max"] == 200000
 
 
 def test_post_run_command_statuses(web_server):
