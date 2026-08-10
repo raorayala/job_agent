@@ -26,6 +26,7 @@ from job_agent.application_tracker import (
     update_job_details,
     update_status,
 )
+from job_agent.auto_apply_service import evaluate_auto_apply_eligibility, launch_auto_apply
 from job_agent.backup_service import create_backup
 from job_agent.cleanup_service import (
     clean_duplicate_jobs,
@@ -40,6 +41,7 @@ from job_agent.demo_data import seed_demo_jobs
 from job_agent.document_exporter import application_folder
 from job_agent.gmail_client import sync_job_emails
 from job_agent.job_analysis import reanalyze_all_jobs
+from job_agent.linkedin_optimize import optimize_linkedin_profile
 from job_agent.logging_config import get_logger
 from job_agent.matcher import score_job
 from job_agent.models import CandidateProfile, ParsedJob
@@ -621,7 +623,7 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
                     <h3 class="fw-bold h4">USER Module</h3>
                     <p class="text-muted mb-3">Daily workflow only: Web Tasks (discover → review → track) and CLS Tasks. No admin/database tools here.</p>
                     <ul class="small text-muted mb-4">
-                        <li>Web Tasks: Dashboard → Discover → Review &amp; Optimize → Board</li>
+                        <li>Web Tasks: Discover → Review &amp; Optimize → Auto Apply → LinkedIn → Board</li>
                         <li>CLS Tasks: sync, analyze, list, report helpers</li>
                     </ul>
                     <span class="btn btn-primary w-100"><i class="bi bi-box-arrow-in-right"></i> Enter User Module</span>
@@ -687,10 +689,12 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
             <button type="button" class="sidebar-nav-btn active" id="dashboard-tab" data-pane="dashboard-pane" onclick="navigateTo('dashboard-tab')"><span class="step-num">1</span> Dashboard</button>
             <button type="button" class="sidebar-nav-btn" id="discovery-tab" data-pane="discovery-pane" onclick="navigateTo('discovery-tab')"><span class="step-num">2</span> Discover Jobs</button>
             <button type="button" class="sidebar-nav-btn" id="review-tab" data-pane="review-pane" onclick="navigateTo('review-tab')"><span class="step-num">3</span> Review &amp; Optimize</button>
-            <button type="button" class="sidebar-nav-btn" id="kanban-tab" data-pane="kanban-pane" onclick="navigateTo('kanban-tab')"><span class="step-num">4</span> Application Board</button>
+            <button type="button" class="sidebar-nav-btn" id="auto-apply-tab" data-pane="auto-apply-pane" onclick="navigateTo('auto-apply-tab')"><span class="step-num">4</span> Auto Apply</button>
+            <button type="button" class="sidebar-nav-btn" id="linkedin-tab" data-pane="linkedin-pane" onclick="navigateTo('linkedin-tab')"><span class="step-num">5</span> LinkedIn Optimization</button>
+            <button type="button" class="sidebar-nav-btn" id="kanban-tab" data-pane="kanban-pane" onclick="navigateTo('kanban-tab')"><span class="step-num">6</span> Application Board</button>
 
             <div class="sidebar-group-title mt-2"><i class="bi bi-terminal me-1"></i> CLS Tasks</div>
-            <button type="button" class="sidebar-nav-btn" id="cls-tab" data-pane="cls-pane" onclick="navigateTo('cls-tab')"><span class="step-num">5</span> CLS Command Tasks</button>
+            <button type="button" class="sidebar-nav-btn" id="cls-tab" data-pane="cls-pane" onclick="navigateTo('cls-tab')"><span class="step-num">7</span> CLS Command Tasks</button>
         </div>
 
         <!-- ADMIN exclusive navigation -->
@@ -714,6 +718,8 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
         <li class="nav-item user-only"><button class="nav-link active" id="dashboard-tab-bs" data-bs-toggle="tab" data-bs-target="#dashboard-pane"></button></li>
         <li class="nav-item user-only"><button class="nav-link" id="discovery-tab-bs" data-bs-toggle="tab" data-bs-target="#discovery-pane"></button></li>
         <li class="nav-item user-only"><button class="nav-link" id="review-tab-bs" data-bs-toggle="tab" data-bs-target="#review-pane"></button></li>
+        <li class="nav-item user-only"><button class="nav-link" id="auto-apply-tab-bs" data-bs-toggle="tab" data-bs-target="#auto-apply-pane"></button></li>
+        <li class="nav-item user-only"><button class="nav-link" id="linkedin-tab-bs" data-bs-toggle="tab" data-bs-target="#linkedin-pane"></button></li>
         <li class="nav-item user-only"><button class="nav-link" id="kanban-tab-bs" data-bs-toggle="tab" data-bs-target="#kanban-pane"></button></li>
         <li class="nav-item user-only"><button class="nav-link" id="cls-tab-bs" data-bs-toggle="tab" data-bs-target="#cls-pane"></button></li>
         <li class="nav-item admin-only"><button class="nav-link" id="admin-home-tab-bs" data-bs-toggle="tab" data-bs-target="#admin-home-pane"></button></li>
@@ -1068,11 +1074,79 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
             </div>
         </div>
 
-        <!-- KANBAN BOARD PANE (USER Web Tasks step 4) -->
+        <!-- AUTO APPLY PANE (USER Web Tasks step 4) -->
+        <div class="tab-pane fade user-only" id="auto-apply-pane">
+            <div class="page-title-bar">
+                <h2><i class="bi bi-send-check text-success"></i> Auto Apply</h2>
+                <span class="badge bg-primary-subtle text-primary">Web Tasks · Step 4</span>
+            </div>
+            <div class="alert alert-info small">
+                <strong>Review-gated assisted apply:</strong> available only after you approve an ATS-optimized resume.
+                This opens the employer application page and your finalized resume folder. It does <em>not</em> bypass CAPTCHAs or silently submit forms.
+            </div>
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-body">
+                    <label class="form-label fw-semibold">Select approved job</label>
+                    <select class="form-select mb-3" id="auto-apply-job-select" onchange="loadAutoApplyEligibility(this.value)">
+                        <option value="">Select a job...</option>
+                    </select>
+                    <div id="auto-apply-eligibility" class="small text-muted mb-3">Select a job to check Auto Apply readiness.</div>
+                    <div class="d-flex flex-wrap gap-2">
+                        <button type="button" class="btn btn-success" id="btn-launch-auto-apply" onclick="launchAutoApply(false)" disabled>
+                            <i class="bi bi-box-arrow-up-right"></i> Launch Auto Apply
+                        </button>
+                        <button type="button" class="btn btn-outline-danger" id="btn-launch-auto-apply-mark" onclick="launchAutoApply(true)" disabled>
+                            <i class="bi bi-check2-circle"></i> Launch &amp; Mark Applied
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" onclick="navigateTo('review-tab')">
+                            <i class="bi bi-file-earmark-check"></i> Go to Review &amp; Optimize
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white fw-bold">Apply checklist</div>
+                <ul class="list-group list-group-flush" id="auto-apply-checklist">
+                    <li class="list-group-item text-muted small">Checklist appears after launch.</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- LINKEDIN OPTIMIZATION PANE (USER Web Tasks step 5) -->
+        <div class="tab-pane fade user-only" id="linkedin-pane">
+            <div class="page-title-bar">
+                <h2><i class="bi bi-linkedin text-primary"></i> LinkedIn Optimization</h2>
+                <span class="badge bg-primary-subtle text-primary">Web Tasks · Step 5</span>
+            </div>
+            <div class="alert alert-secondary small">
+                Dedicated LinkedIn optimizer: readiness score, recruiter keyword gaps, 220-character headline, About summary, and skills audit.
+                Nothing is published to LinkedIn automatically — copy after you review.
+            </div>
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold" for="li-target-role">Target LinkedIn role / headline focus</label>
+                            <input type="text" class="form-control" id="li-target-role" placeholder="e.g. Staff Backend Engineer">
+                        </div>
+                        <div class="col-md-6 d-flex align-items-end">
+                            <button type="button" class="btn btn-primary" onclick="runLinkedInOptimize()"><i class="bi bi-stars"></i> Optimize LinkedIn Profile</button>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-semibold" for="li-job-description">Optional job description / industry keywords</label>
+                            <textarea class="form-control" id="li-job-description" rows="4" placeholder="Paste a target job description or industry keywords to optimize against..."></textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div id="linkedin-optimize-results" class="small text-muted">Run Optimize LinkedIn Profile to generate headline, About, gaps, and skills audit.</div>
+        </div>
+
+        <!-- KANBAN BOARD PANE (USER Web Tasks step 6) -->
         <div class="tab-pane fade user-only" id="kanban-pane">
             <div class="page-title-bar">
                 <h2><i class="bi bi-kanban text-primary"></i> Application Board</h2>
-                <span class="badge bg-primary-subtle text-primary">Web Tasks · Step 4</span>
+                <span class="badge bg-primary-subtle text-primary">Web Tasks · Step 6</span>
             </div>
             <div class="row g-3" id="kanban-board-container">
                 <!-- Columns loaded dynamically -->
@@ -1647,9 +1721,10 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
     const BOOKMARKLET_INSTALLED_KEY = 'job_agent_bookmarklet_installed';
     const CONSOLE_MODE_KEY = 'job_agent_console_mode';
     const MODULE_ENTERED_KEY = 'job_agent_module_entered';
-    const USER_TAB_IDS = ['dashboard-tab', 'discovery-tab', 'review-tab', 'kanban-tab', 'cls-tab'];
+    const USER_TAB_IDS = ['dashboard-tab', 'discovery-tab', 'review-tab', 'auto-apply-tab', 'linkedin-tab', 'kanban-tab', 'cls-tab'];
     const ADMIN_TAB_IDS = ['admin-home-tab', 'db-tab', 'profile-tab', 'cheatsheet-tab'];
     let currentOptimizeBundle = null;
+    let currentAutoApplyJobId = null;
 
     function showModuleGate() {
         document.body.classList.add('module-gate-open');
@@ -2126,6 +2201,7 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
                 renderAllJobsTable(jobs);
                 renderKanbanBoard(jobs);
                 populateReviewJobSelect(jobs);
+                populateAutoApplyJobSelect(jobs);
             })
             .catch(err => {
                 console.error("Error in fetchJobs:", err);
@@ -2240,9 +2316,152 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
 
     function populateReviewJobSelect(jobs) {
         const sel = document.getElementById('review-job-select');
+        if (!sel) return;
         sel.innerHTML = '<option value="">Select a job from list...</option>';
         (jobs || []).forEach(j => {
             sel.innerHTML += `<option value="${j.id}">#${j.id}: ${escapeHtml(j.title)} at ${escapeHtml(j.company)} (${j.status})</option>`;
+        });
+    }
+
+    function populateAutoApplyJobSelect(jobs) {
+        const sel = document.getElementById('auto-apply-job-select');
+        if (!sel) return;
+        sel.innerHTML = '<option value="">Select a job...</option>';
+        (jobs || []).forEach(j => {
+            sel.innerHTML += `<option value="${j.id}">#${j.id}: ${escapeHtml(j.title)} at ${escapeHtml(j.company)} (${j.status})</option>`;
+        });
+    }
+
+    function loadAutoApplyEligibility(jobId) {
+        currentAutoApplyJobId = jobId || null;
+        const box = document.getElementById('auto-apply-eligibility');
+        const btn = document.getElementById('btn-launch-auto-apply');
+        const btnMark = document.getElementById('btn-launch-auto-apply-mark');
+        if (!jobId) {
+            if (box) box.innerHTML = 'Select a job to check Auto Apply readiness.';
+            if (btn) btn.disabled = true;
+            if (btnMark) btnMark.disabled = true;
+            return;
+        }
+        fetch(`/api/auto-apply/eligibility?job_id=${jobId}`)
+            .then(async res => {
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Eligibility check failed');
+                return data;
+            })
+            .then(data => {
+                const blockers = (data.blockers || []).map(b => `<li class="text-danger">${escapeHtml(b)}</li>`).join('');
+                const warnings = (data.warnings || []).map(w => `<li class="text-warning">${escapeHtml(w)}</li>`).join('');
+                box.innerHTML = `
+                    <div class="mb-2"><strong>${escapeHtml(data.title)}</strong> at ${escapeHtml(data.company)}</div>
+                    <div class="mb-1">Approval: <code>${escapeHtml(data.approval_status || '-')}</code> · Status: <code>${escapeHtml(data.status || '-')}</code></div>
+                    <div class="mb-1">ATS optimize accepts: <strong>${data.optimize_accepted || 0}</strong> · ATS ready flag: <strong>${data.ats_ready ? 'yes' : 'no'}</strong></div>
+                    <div class="mb-1">Resume: <code>${escapeHtml(data.final_resume_path || 'n/a')}</code></div>
+                    ${blockers ? `<ul class="mb-1">${blockers}</ul>` : '<div class="text-success mb-1">Ready for assisted Auto Apply.</div>'}
+                    ${warnings ? `<ul class="mb-0">${warnings}</ul>` : ''}
+                `;
+                const ok = !!data.eligible;
+                if (btn) btn.disabled = !ok;
+                if (btnMark) btnMark.disabled = !ok;
+            })
+            .catch(err => {
+                box.innerHTML = `<span class="text-danger">${escapeHtml(err.message)}</span>`;
+                if (btn) btn.disabled = true;
+                if (btnMark) btnMark.disabled = true;
+            });
+    }
+
+    function launchAutoApply(markApplied) {
+        if (!currentAutoApplyJobId) return;
+        const confirmMsg = markApplied
+            ? 'Open employer page + resume folder, then mark this job as Applied? Only confirm if you will submit now.'
+            : 'Open employer application page and finalized resume folder for assisted Auto Apply?';
+        if (!confirm(confirmMsg)) return;
+        showProgress('Launching assisted Auto Apply...', 20);
+        fetch('/api/auto-apply/launch', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                job_id: parseInt(currentAutoApplyJobId),
+                mark_as_applied: !!markApplied,
+                confirm: !!markApplied,
+                open_browser: true,
+                open_resume_folder: true
+            })
+        })
+        .then(async res => {
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Auto Apply failed');
+            return data;
+        })
+        .then(data => {
+            finishProgress(data.message || 'Auto Apply launched', true);
+            const list = document.getElementById('auto-apply-checklist');
+            if (list) {
+                list.innerHTML = (data.checklist || []).map(i => `<li class="list-group-item small">${escapeHtml(i)}</li>`).join('')
+                    + `<li class="list-group-item small text-muted">Resume: <code>${escapeHtml(data.resume_path || '')}</code></li>`
+                    + `<li class="list-group-item small text-muted">URL: <code>${escapeHtml(data.job_url || '')}</code></li>`;
+            }
+            loadAutoApplyEligibility(currentAutoApplyJobId);
+            loadAllData();
+            alert('✅ ' + (data.message || 'Auto Apply launched'));
+        })
+        .catch(err => {
+            finishProgress('Auto Apply failed', false);
+            alert('❌ ' + err.message);
+        });
+    }
+
+    function runLinkedInOptimize() {
+        const role = (document.getElementById('li-target-role')?.value || '').trim();
+        const jd = (document.getElementById('li-job-description')?.value || '').trim();
+        showProgress('Optimizing LinkedIn headline, About, and skills...', 18);
+        fetch('/api/linkedin/optimize', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ target_role: role, job_description: jd })
+        })
+        .then(async res => {
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'LinkedIn optimize failed');
+            return data;
+        })
+        .then(data => {
+            finishProgress('LinkedIn optimization ready', true);
+            const el = document.getElementById('linkedin-optimize-results');
+            const audit = (data.skills_audit || []).map(a =>
+                `<li><strong>${escapeHtml(a.skill)}</strong> — <em>${escapeHtml(a.action)}</em>: ${escapeHtml(a.reason)}</li>`
+            ).join('');
+            const tips = (data.linkedin_tips || []).map(t => `<li>${escapeHtml(t)}</li>`).join('');
+            el.innerHTML = `
+                <div class="row g-3 mb-3">
+                    <div class="col-md-3"><div class="stat-card py-2"><div class="text-muted small">Readiness</div><div class="stat-value text-primary fs-3">${data.readiness_score}%</div></div></div>
+                    <div class="col-md-9">
+                        <div class="mb-2"><strong>Matched:</strong> ${escapeHtml((data.matched_keywords||[]).join(', ') || '—')}</div>
+                        <div><strong>Gaps:</strong> ${escapeHtml((data.keyword_gaps||[]).join(', ') || '—')}</div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <div class="fw-semibold mb-1">LinkedIn headline (≤220)</div>
+                    <div class="border rounded p-2 bg-white mb-2" id="li-headline">${escapeHtml(data.headline || '')}</div>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="navigator.clipboard.writeText(document.getElementById('li-headline').innerText)">Copy headline</button>
+                </div>
+                <div class="mb-3">
+                    <div class="fw-semibold mb-1">LinkedIn About</div>
+                    <div class="border rounded p-2 bg-white mb-2" id="li-about" style="white-space:pre-wrap">${escapeHtml(data.about_summary || '')}</div>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="navigator.clipboard.writeText(document.getElementById('li-about').innerText)">Copy About</button>
+                </div>
+                <div class="mb-2"><strong>Skills audit</strong></div>
+                <ul class="mb-3">${audit || '<li>No audit items</li>'}</ul>
+                <div class="mb-2"><strong>Suggested Top Skills order</strong></div>
+                <div class="border rounded p-2 bg-white mb-3">${escapeHtml((data.suggested_skills_order||[]).join(', '))}</div>
+                <div class="mb-2"><strong>How to apply on LinkedIn</strong></div>
+                <ul>${tips}</ul>
+            `;
+        })
+        .catch(err => {
+            finishProgress('LinkedIn optimize failed', false);
+            alert('❌ ' + err.message);
         });
     }
 
@@ -3309,6 +3528,25 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
                 finally:
                     session.close()
 
+            elif url_path == "/api/auto-apply/eligibility":
+                job_id = int((query_params.get("job_id") or ["0"])[0])
+                settings = get_settings()
+                SessionLocal = init_db(settings.database_path)
+                session = SessionLocal()
+                try:
+                    j = get_job(session, job_id)
+                    if not j:
+                        self.send_error(404, "Job not found")
+                        return
+                    payload = evaluate_auto_apply_eligibility(j).to_dict()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self._set_cors_headers()
+                    self.end_headers()
+                    self.wfile.write(json.dumps(payload).encode("utf-8"))
+                finally:
+                    session.close()
+
             elif url_path == "/api/db/tables":
                 payload = {"tables": ["jobs", "activity_logs", "contacts", "interviews", "application_answers", "processed_emails"]}
                 self.send_response(200)
@@ -3794,6 +4032,57 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
                 self._set_cors_headers()
                 self.end_headers()
                 self.wfile.write(json.dumps(payload).encode("utf-8"))
+
+            elif url_path == "/api/linkedin/optimize":
+                data = json.loads(body) if body else {}
+                try:
+                    payload = optimize_linkedin_profile(
+                        target_role=str(data.get("target_role") or ""),
+                        about_context=str(data.get("about_context") or ""),
+                        job_description=str(data.get("job_description") or ""),
+                    )
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self._set_cors_headers()
+                    self.end_headers()
+                    self.wfile.write(json.dumps(payload).encode("utf-8"))
+                except Exception as exc:
+                    self.send_response(400)
+                    self.send_header("Content-Type", "application/json")
+                    self._set_cors_headers()
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": str(exc)}).encode("utf-8"))
+
+            elif url_path == "/api/auto-apply/launch":
+                data = json.loads(body) if body else {}
+                job_id = int(data.get("job_id", 0))
+                settings = get_settings()
+                SessionLocal = init_db(settings.database_path)
+                session = SessionLocal()
+                try:
+                    result = launch_auto_apply(
+                        session,
+                        job_id,
+                        settings,
+                        open_browser=bool(data.get("open_browser", True)),
+                        open_resume_folder=bool(data.get("open_resume_folder", True)),
+                        mark_as_applied=bool(data.get("mark_as_applied", False)),
+                        confirm=bool(data.get("confirm", False)),
+                    )
+                    payload = result.to_dict()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self._set_cors_headers()
+                    self.end_headers()
+                    self.wfile.write(json.dumps(payload).encode("utf-8"))
+                except (LookupError, PermissionError, ValueError) as exc:
+                    self.send_response(400)
+                    self.send_header("Content-Type", "application/json")
+                    self._set_cors_headers()
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": str(exc)}).encode("utf-8"))
+                finally:
+                    session.close()
 
             elif url_path == "/api/jobs/update-status":
                 data = json.loads(body)
