@@ -17,7 +17,7 @@ from sqlalchemy.orm import sessionmaker
 
 from job_agent.application_tracker import record_parsed_job
 from job_agent.config import Settings, load_candidate_profile
-from job_agent.database import is_email_processed, mark_email_processed
+from job_agent.database import is_email_processed, log_activity, mark_email_processed
 from job_agent.email_parser import parse_email
 from job_agent.job_normalizer import check_duplicate
 from job_agent.logging_config import get_logger
@@ -265,6 +265,14 @@ def sync_job_emails(
                     subject=email.get("subject"),
                     jobs_extracted=len(parsed_jobs),
                 )
+
+        if not dry_run and summary["emails_processed"] > 0:
+            log_activity(
+                session,
+                event_type="import",
+                title=f"Gmail Sync Imported {summary['new_jobs']} New Jobs",
+                description=f"Processed {summary['emails_processed']} emails ({summary['duplicates_skipped']} duplicates skipped).",
+            )
 
     finally:
         session.close()

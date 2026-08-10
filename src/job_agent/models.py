@@ -9,6 +9,11 @@ from typing import Any
 
 
 class ApplicationStatus(str, Enum):
+    IMPORTED = "Imported"
+    ANALYZED = "Analyzed"
+    DRAFT_READY = "Resume draft ready"
+    AWAITING_REVIEW = "Awaiting review"
+    APPROVED = "Approved"
     SAVED = "Saved"
     REVIEWING = "Reviewing"
     READY_TO_APPLY = "Ready to apply"

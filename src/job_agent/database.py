@@ -84,6 +84,13 @@ class JobRecord(Base):
     custom_title_override: Mapped[str | None] = mapped_column(String(300), nullable=True)
     custom_company_override: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
+    draft_resume_path: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    draft_summary_path: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    final_resume_path: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    draft_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    approval_status: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    diff_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
@@ -146,6 +153,19 @@ class ApplicationAnswer(Base):
     source_context: Mapped[str | None] = mapped_column(String(300), nullable=True)
     tags: Mapped[str | None] = mapped_column(String(300), nullable=True)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class ActivityLogRecord(Base):
+    """Activity feed events for job discovery, import, analysis, draft generation, and approval."""
+
+    __tablename__ = "activity_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    event_type: Mapped[str] = mapped_column(String(50))  # discovery, import, analysis, draft, approval, status_change
+    title: Mapped[str] = mapped_column(String(300))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
@@ -228,6 +248,12 @@ def _migrate_sqlite_schema(engine: Engine) -> None:
                 ("user_notes", "TEXT"),
                 ("custom_title_override", "VARCHAR(300)"),
                 ("custom_company_override", "VARCHAR(200)"),
+                ("draft_resume_path", "VARCHAR(1000)"),
+                ("draft_summary_path", "VARCHAR(1000)"),
+                ("final_resume_path", "VARCHAR(1000)"),
+                ("draft_created_at", "DATETIME"),
+                ("approval_status", "VARCHAR(50)"),
+                ("diff_summary", "TEXT"),
             ]
             for col_name, col_def in missing_additions:
                 if col_name not in existing_cols:
@@ -288,3 +314,26 @@ def mark_email_processed(
     session.commit()
     session.refresh(row)
     return row
+
+
+def log_activity(
+    session: Session,
+    event_type: str,
+    title: str,
+    description: str | None = None,
+    job_id: int | None = None,
+) -> ActivityLogRecord:
+    """Helper to log activity feed events into database."""
+    item = ActivityLogRecord(
+        event_type=event_type,
+        title=title,
+        description=description,
+        job_id=job_id,
+    )
+    session.add(item)
+    try:
+        session.commit()
+        session.refresh(item)
+    except Exception:
+        session.rollback()
+    return item

@@ -23,6 +23,8 @@ class Settings:
     project_root: Path
     master_resume_path: Path | None
     jobs_applied_folder: Path
+    jobs_draft_folder: Path
+    preferred_browser: str
     gmail_credentials_path: Path
     gmail_token_path: Path
     gmail_search_query: str
@@ -138,6 +140,31 @@ def save_candidate_profile(profile: CandidateProfile, config_path: Path | None =
         yaml.safe_dump(cfg, handle, sort_keys=False, allow_unicode=True)
 
 
+def validate_config(config_dict: dict[str, Any] | None = None) -> list[str]:
+    """
+    Validate config.yaml structure and surface helpful warnings for malformed entries.
+    """
+    warnings: list[str] = []
+    cfg = config_dict if config_dict is not None else load_yaml_config()
+    profile = cfg.get("profile") or {}
+
+    target_titles = profile.get("target_titles")
+    if not target_titles or not isinstance(target_titles, list) or not any(str(t).strip() for t in target_titles):
+        warnings.append("Config warning: 'profile.target_titles' is empty or missing valid entries.")
+
+    req_skills = profile.get("required_skills")
+    if not req_skills or not isinstance(req_skills, list) or not any(str(s).strip() for s in req_skills):
+        warnings.append("Config warning: 'profile.required_skills' is empty or missing.")
+
+    master_path = profile.get("master_resume_path") or get_env("MASTER_RESUME_PATH")
+    if not master_path:
+        warnings.append("Config warning: 'master_resume_path' is not set in config.yaml or .env.")
+    elif not Path(master_path).exists():
+        warnings.append(f"Config warning: Master resume file at '{master_path}' does not exist.")
+
+    return warnings
+
+
 def get_settings(project_root: Path | None = None) -> Settings:
     root = project_root or PROJECT_ROOT
     load_dotenv_files(root)
@@ -146,6 +173,12 @@ def get_settings(project_root: Path | None = None) -> Settings:
         get_env("JOBS_APPLIED_FOLDER", str(Path.home() / "Desktop" / "Jobs Applied"))
         or (Path.home() / "Desktop" / "Jobs Applied")
     )
+    drafts_folder = Path(
+        get_env("JOBS_DRAFT_FOLDER", str(jobs_folder / "_drafts"))
+        or str(jobs_folder / "_drafts")
+    )
+    browser = (get_env("PREFERRED_BROWSER", "system") or "system").lower()
+
     db_path = Path(get_env("DATABASE_PATH", str(root / "data" / "jobs.db")) or (root / "data" / "jobs.db"))
     if not db_path.is_absolute():
         db_path = (root / db_path).resolve()
@@ -167,6 +200,8 @@ def get_settings(project_root: Path | None = None) -> Settings:
         project_root=root,
         master_resume_path=Path(master) if master else None,
         jobs_applied_folder=jobs_folder,
+        jobs_draft_folder=drafts_folder,
+        preferred_browser=browser,
         gmail_credentials_path=creds,
         gmail_token_path=token,
         gmail_search_query=get_env(
@@ -186,6 +221,7 @@ def get_settings(project_root: Path | None = None) -> Settings:
 
 
 def ensure_runtime_dirs(settings: Settings) -> None:
-    """Create local data and Jobs Applied folders (no network side effects)."""
+    """Create local data, Jobs Applied, and Drafts folders (no network side effects)."""
     settings.database_path.parent.mkdir(parents=True, exist_ok=True)
     settings.jobs_applied_folder.mkdir(parents=True, exist_ok=True)
+    settings.jobs_draft_folder.mkdir(parents=True, exist_ok=True)

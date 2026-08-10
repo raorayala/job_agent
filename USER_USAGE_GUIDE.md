@@ -1,12 +1,12 @@
 # User Usage Guide — Local AI Job Search Agent
 
-A private, local-first personal career assistant.
+A private, local-first personal career assistant with a review-first web application.
 
 ---
 
 ## Interactive Web Console & Quick Reference Workflow
 
-Launch the Web Console in your browser to view results, manage Kanban cards, edit your candidate profile, and execute commands with 1 click:
+Launch the Web Console in your browser to discover jobs across the top 10 USA platforms, review ATS resume drafts, manage Kanban cards, and execute commands with 1 click:
 
 ```powershell
 python -m job_agent web
@@ -16,30 +16,36 @@ Or run individual commands in your terminal:
 
 ```powershell
 # 1. Start Web Console & 1-click Chrome bookmarklet server
-python -m job_agent serve
+python -m job_agent web
 
-# 2. Open automated search query links tailored to your config.yaml skills (posted in last 1-2 weeks)
-python -m job_agent search-links --open --browser chrome
+# 2. Open automated search query links for top 10 USA platforms (posted in last 1-2 weeks)
+python -m job_agent search-links --open --browser system
 
-# 3. Direct search and fetch from job platforms (<10 jobs per platform, posted in last 1-2 weeks)
-python -m job_agent fetch-jobs --platforms dice,ziprecruiter --limit 9
+# 3. Direct search and fetch from top 10 platforms (<10 jobs per platform, posted in last 1-2 weeks)
+python -m job_agent fetch-jobs --platforms dice,ziprecruiter,indeed,linkedin,glassdoor --limit 9
 
-# 4. Sync job alert emails from Gmail (received in last 14 days)
+# 4. Automated job import from URL
+python -m job_agent add-job --url "https://www.linkedin.com/jobs/view/123456"
+
+# 5. Sync job alert emails from Gmail (received in last 14 days)
 python -m job_agent sync-gmail
 
-# 5. Re-score all jobs against your master resume text and profile
+# 6. Re-score all jobs against your master resume text and profile
 python -m job_agent analyze
 
-# 6. List high-matching opportunities
+# 7. List high-matching opportunities
 python -m job_agent jobs --min-score 60
 
-# 7. Generate ATS tailored DOCX resume & cover letter
+# 8. Generate ATS tailored DOCX resume draft into _drafts/ folder
 python -m job_agent tailor <job_id>
 
-# 8. Mark as applied after manual submission
+# 9. Explicitly approve and promote draft into finalized jobapplied folder
+python -m job_agent approve-draft <job_id>
+
+# 10. Mark as applied after manual submission
 python -m job_agent mark-applied <job_id> --confirm
 
-# 9. View search pipeline dashboard & follow-ups
+# 11. View search pipeline dashboard & follow-ups
 python -m job_agent dashboard
 python -m job_agent follow-ups
 ```
@@ -57,42 +63,47 @@ The Web Application Console (`http://localhost:8000/`) gives you complete, 100% 
    ```powershell
    python -m job_agent web
    ```
-   This automatically opens `http://localhost:8000/` in Google Chrome.
+   This automatically opens `http://localhost:8000/` in your system default browser.
 
-2. **Dashboard Tab (Pipeline Metrics & High Matches)**:
-   - View top cards for **Total Tracked Jobs**, **High Match Opportunities**, **Follow-ups Due**, and **Upcoming Interviews**.
-   - Review high-score opportunities with color-coded score badges. Click **Tailor DOCX** to generate resume files immediately.
+2. **Dashboard Tab (Pipeline Metrics & Live Activity Feed)**:
+   - View metric cards: **Total Discovered Jobs**, **Jobs Requiring Review**, **Drafts Awaiting Approval**, and **Applications In Progress**.
+   - Primary Action buttons: **Find Jobs Now**, **Sync Gmail Alerts**, **Import Job URL**, and **Review Resume Drafts**.
+   - Live Activity Feed tracking discovery, import, analysis, draft generation, and approval events.
 
-3. **Kanban Application Board Tab (Visual Status Tracker)**:
-   - View jobs organized by columns: `Saved`, `Reviewing`, `Ready to apply`, `Applied`, `Interviewing`, `Offer`, `Rejected`.
-   - **Move Cards**: Change a job's application status with 1 click using the status dropdown on any card.
-   - **Inspect Details**: Click any card to open the Slide-Over Job Details Modal.
+3. **Job Discovery Tab (Top 10 USA Platforms)**:
+   - Platform cards for Indeed, LinkedIn, Glassdoor, Monster, ZipRecruiter, CareerBuilder, SimplyHired, Dice, Wellfound, and Google Jobs.
+   - Filter jobs by Title, Location, Work Mode (`remote` / `hybrid` / `on-site`), Posting Age (within 14 days), and Salary.
+   - Click **"Find Jobs Now"** to run automated discovery across top platforms (<10 jobs per platform).
 
-4. **Slide-Over Job Details Modal**:
-   - Displays full job description, matched skills badges (green), and missing keywords (red).
-   - **📁 Open Desktop Folder**: Click to open `~/Desktop/Jobs Applied/<Company>/<Job Title>/` directly in **Windows File Explorer**!
-   - **📄 Tailor Resume & Cover Letter**: Generates ATS tailored DOCX files.
-   - **🌐 Open Link**: Opens job listing in Google Chrome.
+4. **Automated URL Job Import Modal**:
+   - Click **Import URL** in the header or Dashboard to open the URL import modal.
+   - Paste any job page URL (from LinkedIn, Indeed, Glassdoor, Monster, Dice, etc.) to automatically fetch and parse title, company, location, and description.
 
-5. **Profile & Skills Editor Tab (`config.yaml`)**:
-   - Edit target job titles, required skills, preferred skills, experience years, salary range, locations, and excluded companies/titles directly in browser.
-   - Click **Save Profile Configuration** to save changes to `config.yaml` and re-score jobs in real time.
+5. **Resume Review & Approval Screen (3-Way Version View)**:
+   - Clearly distinguishes:
+     1. **Master Resume**: Source of truth (`master_resume.docx`)
+     2. **Draft Resume**: ATS tailored version in `_drafts/` awaiting review
+     3. **Finalized Resume**: Promoted upon explicit approval into `~/Desktop/Jobs Applied/<Company>/<Job Title>/`
+   - Inspect ATS Keyword Alignment & Change Summary / Diff view.
+   - Click **"Approve & Finalize Resume"** to trigger confirmation modal and promote draft to `jobapplied` folder.
 
-6. **CLI Command Runner Tab**:
-   - Access form controls and **"▶ Run Command"** buttons for all 27 CLI commands.
-   - Click **Run Command** to execute any command in a subprocess and view output live in the **Terminal Output Console**.
+6. **Kanban Application Board Tab**:
+   - View jobs organized by lifecycle columns: `Imported`, `Analyzed`, `Resume draft ready`, `Awaiting review`, `Approved`, `Applied`, `Interviewing`, `Offer`, `Rejected`.
+   - Change a job's status with 1 click using the status dropdown.
 
-7. **Export `.ics` Calendar Events**:
-   - Click **Export .ics Calendar** in the top header to download a standard `.ics` file containing all upcoming follow-ups (automatically set for 7 days after application) and scheduled interviews. Import this file directly into Outlook, Google Calendar, or Apple Calendar.
+7. **Database Explorer & Cleanup Tab**:
+   - Browse SQLite tables (`jobs`, `activity_logs`, `contacts`, `interviews`, `application_answers`, `processed_emails`).
+   - Execute SQL queries directly or run automated cleanup routines (duplicates, stale jobs, purge test data).
 
-8. **Windows Desktop Toast Notifications**:
-   - Whenever you run `fetch-jobs` or `sync-gmail`, if a new job scoring **≥ 70/100** is discovered, a native Windows Toast popup alerts you immediately!
+8. **Profile & Skills Editor Tab (`config.yaml`)**:
+   - Edit target job titles, required skills, preferred skills, experience years, salary range, and locations directly in browser.
+   - Click **Save Profile Configuration** to save changes to `config.yaml`.
 
 ---
 
 ## 1-Click Chrome Bookmarklet Setup
 
-1. Run `python -m job_agent serve` or `python -m job_agent web` in terminal.
+1. Run `python -m job_agent web` in terminal.
 2. In Google Chrome, press `Ctrl + Shift + B` to show Bookmarks Bar.
 3. Right-click Bookmarks Bar -> **Add page...**
    - **Name**: `Capture Job`
@@ -111,7 +122,7 @@ javascript:(function(){
   })
   .then(res => res.json())
   .then(data => alert(`✅ Job Saved to Job Agent!\n\nID: #${data.job_id}\nTitle: ${data.title}\nCompany: ${data.company}\nMatch Score: ${data.score}/100`))
-  .catch(err => alert('❌ Error: Make sure "python -m job_agent serve" is running in terminal.'));
+  .catch(err => alert('❌ Error: Make sure "python -m job_agent web" is running in terminal.'));
 })();
 ```
 4. Click **`Capture Job`** on Chrome's bar while viewing any job on Indeed, Dice, ZipRecruiter, Glassdoor, or LinkedIn!
@@ -141,21 +152,16 @@ javascript:(function(){
   python -m job_agent purge-data --confirm
   ```
 
-- **Automated Daily Sync (Task Scheduler)**:
-  ```powershell
-  powershell -ExecutionPolicy Bypass -File scripts/schedule_daily_sync.ps1
-  ```
-
 ---
 
 ## 🔐 Security & Privacy Safeguards
 
 1. **Air-Gapped Local Storage**: All databases, tokens, resumes, cover letters, contacts, and logs remain 100% on your computer.
 2. **Gmail Read-Only Scope**: Uses `gmail.readonly` OAuth 2.0 scope only; cannot send or modify emails.
-3. **Localhost Endpoint Binding**: Capture server (`serve`) binds strictly to `127.0.0.1:8000`.
+3. **Localhost Endpoint Binding**: Web Console binds strictly to `127.0.0.1:8000`.
 4. **Git Exclusion (`.gitignore`)**: Prevents accidental commits of `.env`, `credentials.json`, `token.json`, `jobs.db`, and generated DOCX resumes.
 5. **Truthfulness Guarantee**: Resumes and cover letters use only verified experience from your master DOCX resume. Zero hallucinated jobs, titles, or dates.
-6. **Zero Auto-Apply**: Human-in-the-loop required for all application submissions.
+6. **Zero Auto-Apply**: Human-in-the-loop required for all application submissions and resume draft approvals.
 
 ---
 

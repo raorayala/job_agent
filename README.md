@@ -1,6 +1,6 @@
 # Job Search Agent
 
-Local-first Python agent that monitors Gmail job alerts, scores opportunities against your career profile, helps tailor truthful ATS resumes, and tracks applications in SQLite — without ever submitting applications for you.
+Local-first Python AI Job Search Agent that automates job discovery across the top 10 USA job search platforms, imports Gmail alerts, performs ATS keyword analysis, generates versioned resume drafts in a review-first workflow, and tracks applications in SQLite — without ever submitting applications or overwriting finalized resumes without your explicit approval.
 
 ## Full documentation
 
@@ -10,52 +10,65 @@ See the **[docs/](docs/README.md)** folder for the complete project document set
 |-----|-------|
 | [Requirements](docs/01-REQUIREMENTS.md) | Goals, scope, functional requirements |
 | [Design](docs/02-DESIGN-SPECIFICATION.md) | UX flows, CLI contracts, safeguards |
-| [Architecture](docs/03-ARCHITECTURE.md) | Components and data flow |
-| [Implementation](docs/04-IMPLEMENTATION.md) | Module status and coding details |
-| [Data model](docs/05-DATA-MODEL.md) | SQLite schema and config fields |
-| [Security](docs/06-SECURITY-PRIVACY.md) | OAuth, secrets, privacy |
-| [Testing](docs/07-TESTING.md) | Test strategy |
+| [Architecture](docs/03-ARCHITECTURE.md) | Components, top 10 adapters, and data flow |
+| [Implementation](docs/04-IMPLEMENTATION.md) | Module status, review-first engine details |
+| [Data model](docs/05-DATA-MODEL.md) | SQLite schema, draft versioning, activity feed |
+| [Security](docs/06-SECURITY-PRIVACY.md) | OAuth, secrets, privacy, local-first policy |
+| [Testing](docs/07-TESTING.md) | Test strategy & 100% passing suite |
 | [Operations](docs/08-OPERATIONS-DEPLOYMENT.md) | Local production install & ops |
 | [Roadmap](docs/09-ROADMAP.md) | Milestones and future work |
-| [User guide](docs/10-USER-GUIDE.md) | Day-to-day usage |
+| [User guide](docs/10-USER-GUIDE.md) | Day-to-day usage guide |
+| [CLI Cheat Sheet](CLI_CHEAT_SHEET.md) | Quick CLI reference |
 
-## MVP architecture
+## Review-First Architecture & Safety Workflow
 
 ```
-Gmail (OAuth readonly) → email parser → normalizer/dedupe
+Job Discovery (Top 10 USA Platforms / Gmail / URL Import)
         ↓
- rule-based matcher (+ optional LLM later)
+   SQLite DB ← Matcher (0-100 Explainable ATS Score)
         ↓
- SQLite tracker ← CLI (approval required for Applied)
+  Generate ATS Resume Draft (Saved in _drafts/ folder)
         ↓
- Desktop/Jobs Applied/<Company>/<Job Title>/
+  Web Console Review (Preview Draft vs Master Resume & Diff Summary)
+        ↓
+  User Explicitly Clicks "Approve & Finalize"
+        ↓
+  Promote Approved Resume to ~/Desktop/Jobs Applied/<Company>/<Job Title>/
 ```
 
-| Layer | Responsibility |
-|-------|----------------|
-| `config.yaml` + `.env` | Candidate profile, platforms, secrets |
-| `database.py` | SQLite jobs + processed Gmail IDs |
-| `gmail_client.py` | Read-only OAuth sync (incremental) |
-| `matcher.py` | Explainable 0–100 scoring |
-| `resume_tailor.py` | Factual keyword emphasis only |
-| `cli.py` | Human-in-the-loop commands |
+### Top 10 Supported USA Job Platforms
 
-**Design rules:** data stays local; LLM is optional; Applied status needs `--confirm`; no auto-submit / CAPTCHA / browser automation on job sites.
+1. **Indeed**
+2. **LinkedIn Jobs**
+3. **Glassdoor**
+4. **Monster**
+5. **ZipRecruiter**
+6. **CareerBuilder**
+7. **SimplyHired**
+8. **Dice**
+9. **Wellfound (AngelList Talent)**
+10. **Google Jobs**
 
-## Milestone status
+**Key Safeguards:**
+- **Strict Human Approval**: Resumes are generated into `_drafts/` first. Master resumes and finalized applied resumes are **never overwritten** until you explicitly approve the draft.
+- **Top 10 Platform Batch Limits**: Direct platform searches limit results to **fewer than 10 jobs per platform per run** and filter for postings from the **last 1–2 weeks (14 days)**.
+- **Terms of Service Compliance**: Uses public RSS/Atom feeds, JSON-LD schema, public search endpoints, and URL import fallbacks. Does not perform aggressive browser scraping violating platform TOS.
+- **Browser Control**: Opens search links in your system default browser or configured `PREFERRED_BROWSER` (never forcing Microsoft Edge).
+
+## Milestone Status
 
 | # | Milestone | Status |
 |---|-----------|--------|
-| 1 | Project setup, config, SQLite schema, CLI | ✅ Done |
+| 1 | Project setup, config validation, SQLite schema, CLI | ✅ Done |
 | 2 | Candidate profile + master-resume DOCX text extraction | ✅ Done |
 | 3 | Gmail OAuth + incremental sync (`gmail.readonly`) | ✅ Done |
 | 4 | Email digest / multi-job extraction | ✅ Done |
 | 5 | Multi-tier duplicate detection + application tracking | ✅ Done |
 | 6 | Weighted explainable matching algorithm (0–100) | ✅ Done |
-| 7 | Truthful ATS resume & cover letter tailoring + Desktop export | ✅ Done |
-| 8 | Direct platform fetch, local capture server, contacts, answers, backup, test suite | ✅ Done |
+| 7 | Review-first ATS resume & cover letter tailoring + `_drafts/` folder | ✅ Done |
+| 8 | Top 10 USA Platform Adapters, URL Auto-Importer, Web Application Console, Kanban Board, Database Explorer | ✅ Done |
 
-## Quick start (Windows)
+## Quick Start (Windows / macOS / Linux)
 
 ```powershell
 cd C:\Users\Admin\Projects\job-search-agent
@@ -68,43 +81,41 @@ python -m job_agent setup
 python -m job_agent profile
 ```
 
-### 🌐 Web Console & Visual Application Board
+### 🖥️ Interactive Web Application Console
 
-Launch the local Web Application Console to manage applications, view Kanban cards, and execute CLI commands with 1 click:
+Launch the Web Console to manage applications, search top platforms, review resume drafts, and view Kanban board:
 
 ```powershell
 python -m job_agent web
 ```
-This starts `http://localhost:8000/` featuring:
-- **Visual Kanban Board**: Drag & drop / 1-click status transitions across application stages.
-- **Slide-Over Job Details**: Full job description, matched/missing skills badges, and 1-click **Open Desktop Folder** in File Explorer (`~/Desktop/Jobs Applied/<Company>/<Job Title>/`).
-- **Profile & Skills Web Editor**: Interactive form to edit `config.yaml` target titles, skills, salary, and exclusions directly in browser.
-- **Calendar Exporter (`.ics`)**: Export follow-ups and scheduled interviews directly to Outlook / Google Calendar.
-- **Desktop Toast Notifications**: Real-time Windows Toast popups when high-score jobs (≥ 70/100) are discovered.
-- **1-Click Chrome Bookmarklet**: Save listings instantly while browsing Indeed, Dice, ZipRecruiter, Glassdoor, or LinkedIn.
+This launches `http://localhost:8000/` featuring:
+- **Dashboard**: Summary cards for New Jobs, Jobs Requiring Review, Drafts Awaiting Approval, Applications in Progress, plus live Activity Feed.
+- **Top 10 Job Discovery Page**: Platform cards for all top 10 USA platforms, search query links (<14 days old), and "Find Jobs Now".
+- **Automated URL Job Import**: Paste a job page URL to automatically extract title, company, location, and description.
+- **Resume Review & Approval Page**: Compare Master Resume vs Tailored Draft vs Finalized Resume, inspect change summary, preview draft, and explicitly click "Approve & Finalize".
+- **Visual Kanban Board**: Drag/drop and 1-click status transitions.
+- **Database Explorer & Cleanup**: View SQLite tables, execute SQL queries, and trigger safe automated cleanup routines.
 
 ### Daily Usage Commands
 
 For a full reference, see the **[CLI Command Cheat Sheet](CLI_CHEAT_SHEET.md)** or **[USER_USAGE_GUIDE.md](USER_USAGE_GUIDE.md)**.
 
 ```powershell
-python -m job_agent web                                 # Launch Web Console, Kanban Board & CLI Runner
-python -m job_agent serve                              # Start 1-click Chrome bookmarklet capture server
-python -m job_agent search-links --open --browser chrome  # Launch search URLs (<1-2 weeks old) in Chrome
-python -m job_agent fetch-jobs --platforms dice --limit 9 # Direct search (<10 jobs per platform, <1-2 weeks old)
-python -m job_agent sync-gmail                         # Fetch job alert emails from Gmail
-python -m job_agent analyze                            # Re-score stored jobs against profile & DOCX resume
-python -m job_agent jobs --min-score 60               # List tracked jobs
-python -m job_agent tailor <job_id>                    # Generate tailored ATS DOCX resume & cover letter
-python -m job_agent mark-applied <job_id> --confirm    # Mark as applied after manual submission
-python -m job_agent dashboard                          # View search pipeline dashboard
-python -m job_agent follow-ups                         # View follow-up actions due
+python -m job_agent web                                  # Launch Web Application Console
+python -m job_agent search-links --open --browser system # Launch top 10 search URLs in default browser
+python -m job_agent fetch-jobs --platforms dice,ziprecruiter # Search platforms (<10 jobs, <14 days old)
+python -m job_agent add-job --url "https://..."          # Automated URL job import
+python -m job_agent sync-gmail                          # Fetch job alert emails from Gmail
+python -m job_agent analyze                             # Re-score stored jobs against profile & DOCX resume
+python -m job_agent tailor <job_id>                     # Generate ATS resume draft into _drafts/
+python -m job_agent approve-draft <job_id>               # Explicitly approve and finalize draft
+python -m job_agent mark-applied <job_id> --confirm     # Mark as applied after manual submission
+python -m job_agent backup                              # Create local ZIP backup archive
 ```
 
-## Configure your profile
+## Configure Your Profile
 
 Edit `config.yaml` → `profile`:
-
 - Target titles / industries
 - Required & preferred skills
 - Years of experience
@@ -112,11 +123,14 @@ Edit `config.yaml` → `profile`:
 - Salary range & employment type
 - Work authorization
 - Exclusions (companies, titles, skills, locations)
-- Optional cover-letter template path
+- `master_resume_path` and `master_resumes` mapping
 
-Set `MASTER_RESUME_PATH` and `JOBS_APPLIED_FOLDER` in `.env`.
+Set environment variables in `.env`:
+- `JOBS_APPLIED_FOLDER`: Finalized output directory (default: `~/Desktop/Jobs Applied`)
+- `JOBS_DRAFT_FOLDER`: Draft output directory (default: `~/Desktop/Jobs Applied/_drafts`)
+- `PREFERRED_BROWSER`: `system` (default), `chrome`, `firefox`, or `default`
 
-## Gmail OAuth setup (free, read-only)
+## Gmail OAuth Setup (Read-Only)
 
 1. [Google Cloud Console](https://console.cloud.google.com/) → create/select a project
 2. **APIs & Services** → enable **Gmail API**
@@ -124,52 +138,16 @@ Set `MASTER_RESUME_PATH` and `JOBS_APPLIED_FOLDER` in `.env`.
 4. **Credentials** → **OAuth client ID** → application type **Desktop app**
 5. Download JSON → save as `credentials.json` in the project root (gitignored)
 6. First real sync will open a browser; token is stored in `token.json` (gitignored)
-7. Scope used: `https://www.googleapis.com/auth/gmail.readonly` only
-
-Redirect URIs for Desktop clients are handled by the local loopback server (`google-auth-oauthlib`). Do not commit `credentials.json` or `token.json`.
-
-## Project layout
-
-```
-job-search-agent/
-├── README.md
-├── pyproject.toml
-├── .env.example
-├── .gitignore
-├── config.yaml
-├── src/job_agent/
-│   ├── cli.py
-│   ├── config.py
-│   ├── models.py
-│   ├── database.py
-│   ├── gmail_client.py
-│   ├── email_parser.py
-│   ├── job_normalizer.py
-│   ├── matcher.py
-│   ├── resume_tailor.py
-│   ├── document_exporter.py
-│   ├── application_tracker.py
-│   └── services/
-├── tests/
-├── data/                 # SQLite DB (gitignored)
-├── templates/
-└── scripts/
-```
+7. Scope used: strictly `https://www.googleapis.com/auth/gmail.readonly`
 
 ## Tests
 
+Run the full test suite (46 passing tests):
+
 ```powershell
-pytest -q
+pytest
 ```
-
-## Security & privacy
-
-- Credentials, OAuth tokens, `.env`, databases, and generated resumes are gitignored
-- Treat resume content, email bodies, and application history as sensitive personal data
-- Prefer rule-based matching (`LLM_PROVIDER=none`) to avoid sending job text to third parties
-- Never invent qualifications in tailored resumes
-- Never mark Applied without explicit `--confirm`
 
 ## License
 
-MIT — personal use
+MIT — 100% Private Personal Use

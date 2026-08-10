@@ -280,85 +280,69 @@ def jobs_cmd(
 @app.command("tailor")
 def tailor_cmd(
     job_id: int = typer.Argument(..., help="Job database id"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Show planned output path only"),
-    cover_letter: bool = typer.Option(True, "--cover-letter/--no-cover-letter", help="Generate cover letter alongside resume"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show planned draft output path only"),
+    cover_letter: bool = typer.Option(True, "--cover-letter/--no-cover-letter", help="Generate cover letter alongside resume draft"),
 ) -> None:
-    """Create a tailored ATS resume and cover letter for a job and save to Desktop/Jobs Applied."""
+    """Generate an ATS tailored resume draft into _drafts/ awaiting review (does NOT overwrite applied resume)."""
+    from job_agent.application_tracker import create_resume_draft_for_job
+
     settings, SessionLocal = _init_context()
     profile = load_candidate_profile()
 
     session = SessionLocal()
     try:
-        job = get_job(session, job_id)
-        if job is None:
-            console.print(f"[red]Job id {job_id} not found.[/red]")
-            raise typer.Exit(code=1)
-
-        resume_path_str = profile.get_master_resume_path(job.title) or (
-            str(settings.master_resume_path) if settings.master_resume_path else None
-        )
-        if not resume_path_str:
-            console.print(
-                "[red]MASTER_RESUME_PATH is not set in .env or config.yaml.[/red]\n"
-                "Please copy .env.example to .env and set MASTER_RESUME_PATH to your master resume DOCX."
-            )
-            raise typer.Exit(code=1)
-
-        master_resume_path = Path(resume_path_str)
-
-        parsed = ParsedJob(
-            title=job.title,
-            company=job.company,
-            location=job.location,
-            source_platform=job.source_platform,
-            salary=job.salary,
-            employment_type=job.employment_type,
-            job_url=job.job_url,
-            description=job.description or "",
-            gmail_message_id=job.gmail_message_id,
-        )
-
-        match = MatchExplanation(
-            score=job.match_score or 0.0,
-            recommendation=recommendation_for_score(job.match_score or 0.0),
-            matched_skills=[s.strip() for s in (job.matched_skills or "").split(",") if s.strip()],
-            missing_skills=[s.strip() for s in (job.missing_skills or "").split(",") if s.strip()],
-            concerns=[c.strip() for c in (job.concerns or "").split(";") if c.strip()],
-            summary=job.match_summary or "",
-        )
-
-        output_path = tailor_resume(
-            job=parsed,
-            match=match,
-            master_resume_path=master_resume_path,
-            output_base_dir=settings.jobs_applied_folder,
+        job, draft_path, summary_path, diff_summary = create_resume_draft_for_job(
+            session=session,
+            job_id=job_id,
+            profile=profile,
+            settings=settings,
             dry_run=dry_run,
         )
 
-        cover_letter_path = None
-        if cover_letter:
-            cover_letter_path = generate_cover_letter(
-                job=parsed,
-                match=match,
-                template_path=profile.cover_letter_template_path,
-                output_folder=output_path.parent,
-                dry_run=dry_run,
-            )
+        console.print(
+            f"[bold green]Tailored resume draft created successfully![/bold green]\n"
+            f"  Job: {job.title} @ {job.company}\n"
+            f"  Resume Draft: [cyan]{draft_path}[/cyan]\n"
+            f"  Status updated to: [yellow]{job.status}[/yellow]\n\n"
+            f"[bold yellow]Next Step:[/bold yellow] Review draft in Web Console or run 'python -m job_agent approve-draft {job_id}' to finalize."
+        )
+    finally:
+        session.close()
 
-        if not dry_run:
-            job.status = ApplicationStatus.READY_TO_APPLY.value
-            job.tailored_resume_path = str(output_path)
-            session.commit()
-            console.print(
-                f"[bold green]Tailored application documents created successfully![/bold green]\n"
-                f"  Job: {job.title} @ {job.company}\n"
-                f"  Tailored Resume: [cyan]{output_path}[/cyan]\n"
-                + (f"  Cover Letter: [cyan]{cover_letter_path}[/cyan]\n" if cover_letter_path else "")
-                + f"  Status updated to: [yellow]{job.status}[/yellow]"
-            )
-        else:
-            console.print(f"[yellow][Dry-Run][/yellow] Planned tailored resume path: {output_path}")
 
+@app.command("approve-draft")
+def approve_draft_cmd(
+    job_id: int = typer.Argument(..., help="Job database id"),
+) -> None:
+    """Explicitly approve and promote a resume draft into the finalized jobapplied folder."""
+    from job_agent.application_tracker import approve_resume_draft_for_job
+
+    settings, SessionLocal = _init_context()
+    session = SessionLocal()
+    try:
+        job, final_path = approve_resume_draft_for_job(session=session, job_id=job_id, settings=settings)
+        console.print(
+            f"[bold green]Resume Draft Approved & Finalized![/bold green]\n"
+            f"  Job: {job.title} @ {job.company}\n"
+            f"  Final Resume Folder: [cyan]{final_path}[/cyan]\n"
+            f"  Status: [yellow]{job.status}[/yellow]"
+        )
+    finally:
+        session.close()
+
+
+@app.command("reject-draft")
+def reject_draft_cmd(
+    job_id: int = typer.Argument(..., help="Job database id"),
+) -> None:
+    """Reject a resume draft and revert job status."""
+    from job_agent.application_tracker import reject_resume_draft_for_job
+
+    _, SessionLocal = _init_context()
+    session = SessionLocal()
+    try:
+        job = reject_resume_draft_for_job(session=session, job_id=job_id)
+        console.print(f"[yellow]Rejected resume draft for Job #{job_id}. Status reverted to {job.status}.[/yellow]")
     finally:
         session.close()
 
@@ -527,13 +511,13 @@ def follow_ups_cmd() -> None:
         session.close()
 
 
-def _open_in_browser(url: str, browser_choice: str = "chrome") -> None:
+def _open_in_browser(url: str, browser_choice: str = "system") -> None:
     import os
     import subprocess
     import webbrowser
 
     choice = browser_choice.lower()
-    if choice in ("chrome", "google-chrome", "auto"):
+    if choice in ("chrome", "google-chrome"):
         possible_paths = [
             r"C:\Program Files\Google\Chrome\Application\chrome.exe",
             r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
@@ -547,45 +531,39 @@ def _open_in_browser(url: str, browser_choice: str = "chrome") -> None:
             except Exception:
                 pass
 
+    # Opens OS system default browser without forcing Edge or Chrome
     webbrowser.open(url)
 
 
 @app.command("search-links")
 def search_links_cmd(
     open_browser: bool = typer.Option(False, "--open", help="Open generated search links in browser"),
-    browser: str = typer.Option("chrome", "--browser", help="Browser choice: 'chrome', 'edge', or 'default'"),
+    browser: Optional[str] = typer.Option(None, "--browser", help="Browser choice: 'system', 'chrome', or 'default'"),
 ) -> None:
-    """Generate direct job search query URLs for Indeed, Dice, ZipRecruiter, LinkedIn, and Glassdoor using config.yaml skills and titles."""
-    from urllib.parse import quote_plus
+    """Generate direct job search query URLs for the top 10 USA platforms using config.yaml skills and titles."""
+    from job_agent.platform_fetcher import generate_platform_search_urls
 
+    settings, _ = _init_context()
     profile = load_candidate_profile()
     titles = profile.target_titles or ["Software Engineer"]
-    skills = profile.required_skills[:3]
-    location = profile.locations[0] if profile.locations else ""
+    skills = profile.required_skills[:2]
+    location = profile.locations[0] if profile.locations else "Remote"
 
     query = " ".join([titles[0]] + skills)
-    encoded_query = quote_plus(query)
-    encoded_loc = quote_plus(location)
+    urls = generate_platform_search_urls(query, location)
+    browser_choice = browser or settings.preferred_browser
 
-    urls = {
-        "Dice": f"https://www.dice.com/jobs?q={encoded_query}&location={encoded_loc}&postedDate=14",
-        "Indeed": f"https://www.indeed.com/jobs?q={encoded_query}&l={encoded_loc}&fromage=14",
-        "ZipRecruiter": f"https://www.ziprecruiter.com/candidate/search?search={encoded_query}&location={encoded_loc}&days=14",
-        "LinkedIn": f"https://www.linkedin.com/jobs/search/?keywords={encoded_query}&location={encoded_loc}&f_TPR=r1209600",
-        "Glassdoor": f"https://www.glassdoor.com/Job/jobs.htm?sc.keyword={encoded_query}&fromAge=14",
-    }
-
-    table = Table(title="Generated Automated Job Search Links (from config.yaml)")
+    table = Table(title="Top 10 USA Job Search Query Links (from config.yaml)")
     table.add_column("Platform", style="bold cyan")
-    table.add_column("Search Query Link", style="underline blue")
+    table.add_column("Search Query Link (Filtered for Last 1-2 Weeks)", style="underline blue")
 
     for platform, url in urls.items():
-        table.add_row(platform, url)
+        table.add_row(platform.capitalize(), url)
         if open_browser:
-            _open_in_browser(url, browser_choice=browser)
+            _open_in_browser(url, browser_choice=browser_choice)
 
     console.print(table)
-    console.print(f"\n[bold green]Query Built:[/bold green] '{query}' | [bold green]Location:[/bold green] '{location or 'Any'}'")
+    console.print(f"\n[bold green]Query Built:[/bold green] '{query}' | [bold green]Location:[/bold green] '{location}'")
     if open_browser:
         console.print(f"[green]Opened search links in {browser.capitalize()} browser![/green]")
     else:
@@ -848,25 +826,38 @@ def suggest_answer_cmd(
 @app.command("add-job")
 def add_job_cmd(
     url: str = typer.Option(..., "--url", help="Job page URL"),
-    title: Optional[str] = typer.Option(None, "--title", help="Job title"),
-    company: Optional[str] = typer.Option(None, "--company", help="Company name"),
-    description: Optional[str] = typer.Option(None, "--description", help="Job description text"),
+    title: Optional[str] = typer.Option(None, "--title", help="Manual fallback: Job title"),
+    company: Optional[str] = typer.Option(None, "--company", help="Manual fallback: Company name"),
+    description: Optional[str] = typer.Option(None, "--description", help="Manual fallback: Job description text"),
 ) -> None:
-    """Manually add or import a job listing using a URL and details."""
+    """Automated job import from a URL (automatically extracts title, company, and description)."""
+    from job_agent.platform_fetcher import import_job_from_url
+
     _, SessionLocal = _init_context()
     profile = load_candidate_profile()
     session = SessionLocal()
     try:
-        parsed = ParsedJob(
-            title=title or "Imported Job Listing",
-            company=company or "Unknown",
-            job_url=url,
-            description=description or "",
-            source_platform="manual_import",
-        )
+        # Automated URL extraction
+        parsed = import_job_from_url(url)
+
+        # Allow user manual fallback overrides if explicitly provided
+        if title:
+            parsed.title = title
+        if company:
+            parsed.company = company
+        if description:
+            parsed.description = description
+
         record, match, dupe = record_parsed_job(session, parsed, profile)
+        log_activity(
+            session,
+            event_type="import",
+            title=f"Imported Job #{record.id} via URL",
+            description=f"{record.title} at {record.company} ({record.source_platform})",
+            job_id=record.id,
+        )
         console.print(
-            f"[bold green]Recorded Job #[/bold green]{record.id}: {record.title} @ {record.company}\n"
+            f"[bold green]Imported Job #[/bold green]{record.id}: {record.title} @ {record.company}\n"
             f" Score: {match.score:.0f}/100 ({match.recommendation.value})\n"
             f" Duplicate Status: {'Duplicate (' + dupe.reason + ')' if dupe.is_duplicate else 'Unique'}"
         )

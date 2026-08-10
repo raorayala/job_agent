@@ -1,12 +1,8 @@
 platforms:
-  ziprecruiter:
-    sender_domains:
-    - ziprecruiter.com
-    - notifications.ziprecruiter.com
-    link_patterns:
-    - ziprecruiter.com/jobs/
-    - ziprecruiter.com/ck/
   indeed:
+    enabled: true
+    result_limit: 9
+    posting_age_days: 14
     sender_domains:
     - indeed.com
     - indeedemail.com
@@ -14,25 +10,87 @@ platforms:
     - indeed.com/viewjob
     - indeed.com/rc/clk
     - indeed.com/pagead/
+  linkedin:
+    enabled: true
+    result_limit: 9
+    posting_age_days: 14
+    sender_domains:
+    - linkedin.com
+    link_patterns:
+    - linkedin.com/jobs/view/
+    - linkedin.com/comm/jobs/view/
   glassdoor:
+    enabled: true
+    result_limit: 9
+    posting_age_days: 14
     sender_domains:
     - glassdoor.com
     - glassdoor.io
     link_patterns:
     - glassdoor.com/job-listing/
     - glassdoor.com/partner/
+  monster:
+    enabled: true
+    result_limit: 9
+    posting_age_days: 14
+    sender_domains:
+    - monster.com
+    link_patterns:
+    - monster.com/job-openings/
+    - monster.com/jobs/
+  ziprecruiter:
+    enabled: true
+    result_limit: 9
+    posting_age_days: 14
+    sender_domains:
+    - ziprecruiter.com
+    - notifications.ziprecruiter.com
+    link_patterns:
+    - ziprecruiter.com/jobs/
+    - ziprecruiter.com/ck/
+  careerbuilder:
+    enabled: true
+    result_limit: 9
+    posting_age_days: 14
+    sender_domains:
+    - careerbuilder.com
+    link_patterns:
+    - careerbuilder.com/job/
+  simplyhired:
+    enabled: true
+    result_limit: 9
+    posting_age_days: 14
+    sender_domains:
+    - simplyhired.com
+    link_patterns:
+    - simplyhired.com/job/
   dice:
+    enabled: true
+    result_limit: 9
+    posting_age_days: 14
     sender_domains:
     - dice.com
     link_patterns:
     - dice.com/job-detail/
     - dice.com/jobs/detail/
-  lensa:
+  wellfound:
+    enabled: true
+    result_limit: 9
+    posting_age_days: 14
     sender_domains:
-    - lensa.com
+    - wellfound.com
+    - angel.co
     link_patterns:
-    - lensa.com/jobs/
-    - lensa.com/job/
+    - wellfound.com/jobs/
+    - angel.co/jobs/
+  google_jobs:
+    enabled: true
+    result_limit: 9
+    posting_age_days: 14
+    sender_domains:
+    - google.com
+    link_patterns:
+    - google.com/search?q=jobs
 profile:
   target_titles:
   - Staff Software Engineer
@@ -108,6 +166,11 @@ match_weights:
   location_work_mode: 15
   salary_compatibility: 10
 application_statuses:
+- Imported
+- Analyzed
+- Resume draft ready
+- Awaiting review
+- Approved
 - Saved
 - Reviewing
 - Ready to apply

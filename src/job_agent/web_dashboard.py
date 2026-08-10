@@ -1,4 +1,4 @@
-"""Web application dashboard, Kanban board, database explorer, data cleanup, and CLI execution server."""
+"""Web application dashboard, visual Kanban board, job discovery, review-first resume approval, and CLI execution server."""
 
 from __future__ import annotations
 
@@ -13,9 +13,17 @@ from pathlib import Path
 from threading import Thread
 from typing import Any
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 
-from job_agent.application_tracker import list_tracked_jobs, mark_applied, record_parsed_job, update_status
+from job_agent.application_tracker import (
+    approve_resume_draft_for_job,
+    create_resume_draft_for_job,
+    list_tracked_jobs,
+    mark_applied,
+    record_parsed_job,
+    reject_resume_draft_for_job,
+    update_status,
+)
 from job_agent.backup_service import create_backup
 from job_agent.cleanup_service import (
     clean_duplicate_jobs,
@@ -25,10 +33,18 @@ from job_agent.cleanup_service import (
     purge_all_database_data,
 )
 from job_agent.config import get_settings, load_candidate_profile, save_candidate_profile
-from job_agent.database import JobRecord, create_db_engine, get_job, init_db, list_jobs
+from job_agent.database import ActivityLogRecord, JobRecord, create_db_engine, get_job, init_db, list_jobs, log_activity
 from job_agent.document_exporter import application_folder
+from job_agent.gmail_client import sync_job_emails
 from job_agent.logging_config import get_logger
+from job_agent.matcher import score_job
 from job_agent.models import CandidateProfile, ParsedJob
+from job_agent.platform_fetcher import (
+    TOP_10_PLATFORMS,
+    generate_platform_search_urls,
+    import_job_from_url,
+    search_and_import_jobs,
+)
 from job_agent.report_service import generate_ics_calendar, generate_pipeline_summary, generate_report
 
 logger = get_logger(__name__)
@@ -82,7 +98,7 @@ CLI_COMMANDS_METADATA = [
                 "description": "Generate platform search URLs filtered for jobs posted in the last 1-2 weeks.",
                 "params": [
                     {"name": "open", "flag": "--open", "type": "bool", "default": False, "label": "Open links in browser"},
-                    {"name": "browser", "flag": "--browser", "type": "text", "default": "chrome", "label": "Browser (chrome/edge/default)"}
+                    {"name": "browser", "flag": "--browser", "type": "text", "default": "system", "label": "Browser (system/chrome/default)"}
                 ]
             },
             {
@@ -99,87 +115,44 @@ CLI_COMMANDS_METADATA = [
                 "id": "add-job",
                 "name": "add-job",
                 "cmd": "add-job",
-                "description": "Manually import a job listing via URL, title, company, and description.",
+                "description": "Automated job import from a URL (extracts title, company, location, and description).",
                 "params": [
-                    {"name": "url", "flag": "--url", "type": "text", "default": "", "label": "Job URL"},
-                    {"name": "title", "flag": "--title", "type": "text", "default": "", "label": "Job Title"},
-                    {"name": "company", "flag": "--company", "type": "text", "default": "", "label": "Company Name"},
-                    {"name": "description", "flag": "--description", "type": "text", "default": "", "label": "Job Description"},
-                    {"name": "salary", "flag": "--salary", "type": "text", "default": "", "label": "Salary Range"}
+                    {"name": "url", "flag": "--url", "type": "text", "default": "", "label": "Job URL (required)", "required": True},
+                    {"name": "title", "flag": "--title", "type": "text", "default": "", "label": "Fallback Title"},
+                    {"name": "company", "flag": "--company", "type": "text", "default": "", "label": "Fallback Company"}
                 ]
             }
         ]
     },
     {
-        "category": "Analysis & Document Tailoring",
+        "category": "Analysis & Review-First Resume Tailoring",
         "commands": [
-            {
-                "id": "analyze",
-                "name": "analyze",
-                "cmd": "analyze",
-                "description": "Re-score all saved jobs against candidate profile and master DOCX resume text.",
-                "params": [
-                    {"name": "min_score", "flag": "--min-score", "type": "number", "default": "", "label": "Minimum score filter"}
-                ]
-            },
             {
                 "id": "tailor",
                 "name": "tailor",
                 "cmd": "tailor",
-                "description": "Generate ATS tailored DOCX resume and cover letter in ~/Desktop/Jobs Applied/.",
+                "description": "Generate ATS tailored DOCX resume draft into _drafts/ awaiting user review.",
                 "params": [
                     {"name": "job_id", "flag": "positional", "type": "number", "default": "", "label": "Job ID (required)", "required": True},
-                    {"name": "dry_run", "flag": "--dry-run", "type": "bool", "default": False, "label": "Dry Run mode"},
-                    {"name": "cover_letter", "flag": "--cover-letter/--no-cover-letter", "type": "bool", "default": True, "label": "Generate cover letter"}
-                ]
-            }
-        ]
-    },
-    {
-        "category": "Application Tracking & Pipeline",
-        "commands": [
-            {
-                "id": "jobs",
-                "name": "jobs",
-                "cmd": "jobs",
-                "description": "List tracked jobs with status, score, company, and source platform.",
-                "params": [
-                    {"name": "min_score", "flag": "--min-score", "type": "number", "default": "", "label": "Min Score Filter"},
-                    {"name": "status", "flag": "--status", "type": "text", "default": "", "label": "Status Filter"},
-                    {"name": "limit", "flag": "--limit", "type": "number", "default": 50, "label": "Max rows"}
+                    {"name": "dry_run", "flag": "--dry-run", "type": "bool", "default": False, "label": "Dry Run mode"}
                 ]
             },
             {
-                "id": "mark-applied",
-                "name": "mark-applied",
-                "cmd": "mark-applied",
-                "description": "Mark job as Applied after manual submission on employer platform.",
+                "id": "approve-draft",
+                "name": "approve-draft",
+                "cmd": "approve-draft",
+                "description": "Explicitly approve and promote resume draft into finalized jobapplied folder.",
                 "params": [
-                    {"name": "job_id", "flag": "positional", "type": "number", "default": "", "label": "Job ID (required)", "required": True},
-                    {"name": "confirm", "flag": "--confirm", "type": "bool", "default": True, "label": "Confirm status change"}
+                    {"name": "job_id", "flag": "positional", "type": "number", "default": "", "label": "Job ID (required)", "required": True}
                 ]
             },
             {
-                "id": "dashboard",
-                "name": "dashboard",
-                "cmd": "dashboard",
-                "description": "View job search pipeline summary, high score opportunities, and interviews.",
-                "params": []
-            },
-            {
-                "id": "follow-ups",
-                "name": "follow-ups",
-                "cmd": "follow-ups",
-                "description": "List follow-up actions due or overdue.",
-                "params": []
-            },
-            {
-                "id": "report",
-                "name": "report",
-                "cmd": "report",
-                "description": "Generate local analytics report on applications, response rates, and platforms.",
+                "id": "reject-draft",
+                "name": "reject-draft",
+                "cmd": "reject-draft",
+                "description": "Reject resume draft and revert job status.",
                 "params": [
-                    {"name": "period", "flag": "--period", "type": "select", "default": "weekly", "options": ["weekly", "monthly"], "label": "Report Period"}
+                    {"name": "job_id", "flag": "positional", "type": "number", "default": "", "label": "Job ID (required)", "required": True}
                 ]
             }
         ]
@@ -195,7 +168,6 @@ CLI_COMMANDS_METADATA = [
                 "params": [
                     {"name": "action", "flag": "--action", "type": "select", "default": "duplicates", "options": ["duplicates", "stale", "status", "old", "all"], "label": "Cleanup Action"},
                     {"name": "status", "flag": "--status", "type": "text", "default": "", "label": "Status filter (if action=status)"},
-                    {"name": "days", "flag": "--days", "type": "number", "default": 30, "label": "Days threshold (if action=old)"},
                     {"name": "confirm", "flag": "--confirm", "type": "bool", "default": True, "label": "Confirm deletion"}
                 ]
             },
@@ -204,37 +176,7 @@ CLI_COMMANDS_METADATA = [
                 "name": "backup",
                 "cmd": "backup",
                 "description": "Create local ZIP backup archive of SQLite DB, settings, and documents.",
-                "params": [
-                    {"name": "backup_path", "flag": "positional", "type": "text", "default": "", "label": "Backup Output Path (optional)"}
-                ]
-            },
-            {
-                "id": "restore",
-                "name": "restore",
-                "cmd": "restore",
-                "description": "Restore SQLite database and configuration from a local backup archive.",
-                "params": [
-                    {"name": "backup_path", "flag": "positional", "type": "text", "default": "", "label": "Backup ZIP Path (required)", "required": True}
-                ]
-            },
-            {
-                "id": "delete-job",
-                "name": "delete-job",
-                "cmd": "delete-job",
-                "description": "Delete a single job record and its generated output directory.",
-                "params": [
-                    {"name": "job_id", "flag": "positional", "type": "number", "default": "", "label": "Job ID (required)", "required": True},
-                    {"name": "confirm", "flag": "--confirm", "type": "bool", "default": True, "label": "Confirm deletion"}
-                ]
-            },
-            {
-                "id": "purge-data",
-                "name": "purge-data",
-                "cmd": "purge-data",
-                "description": "Purge all local database records and reset SQLite schema.",
-                "params": [
-                    {"name": "confirm", "flag": "--confirm", "type": "bool", "default": True, "label": "Confirm purge"}
-                ]
+                "params": []
             }
         ]
     }
@@ -288,7 +230,7 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Job Search Agent — Web Console & Interactive Dashboard</title>
+    <title>Job Search Agent Web Console — CLI Command Cheat Sheet & Review-First Web Application</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <style>
@@ -349,10 +291,12 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
             transform: translateY(-2px);
             box-shadow: 0 4px 8px rgba(0,0,0,0.1);
         }
-        .command-card {
+        .platform-card {
             border: 1px solid var(--card-border);
             border-radius: 10px;
             background: #ffffff;
+            padding: 1rem;
+            text-align: center;
         }
         .terminal-box {
             background-color: #0f172a;
@@ -376,12 +320,12 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
 
 <header class="app-header d-flex justify-content-between align-items-center">
     <div>
-        <h4 class="mb-0 fw-bold"><i class="bi bi-robot"></i> Job Search Agent Web Console</h4>
-        <small class="text-light-50">Local-first Private Assistant, Kanban Board & Database Explorer</small>
+        <h4 class="mb-0 fw-bold"><i class="bi bi-robot"></i> Job Search Agent</h4>
+        <small class="text-light-50">Automated Review-First Personal Career Assistant (100% Private)</small>
     </div>
     <div class="d-flex align-items-center gap-2">
-        <a href="/api/calendar.ics" class="btn btn-sm btn-outline-light"><i class="bi bi-calendar-event"></i> Export .ics Calendar</a>
-        <button class="btn btn-sm btn-danger" onclick="triggerQuickCleanup('all')"><i class="bi bi-trash3-fill"></i> Purge Test Data</button>
+        <button class="btn btn-sm btn-outline-light" onclick="openImportUrlModal()"><i class="bi bi-link-45deg"></i> Import URL</button>
+        <a href="/api/calendar.ics" class="btn btn-sm btn-outline-light"><i class="bi bi-calendar-event"></i> .ics Calendar</a>
         <button class="btn btn-sm btn-primary" onclick="loadAllData()"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
     </div>
 </header>
@@ -393,22 +337,22 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
             <button class="nav-link active" id="dashboard-tab" data-bs-toggle="tab" data-bs-target="#dashboard-pane"><i class="bi bi-speedometer2"></i> Dashboard</button>
         </li>
         <li class="nav-item">
-            <button class="nav-link" id="kanban-tab" data-bs-toggle="tab" data-bs-target="#kanban-pane"><i class="bi bi-kanban"></i> Kanban Application Board</button>
+            <button class="nav-link" id="discovery-tab" data-bs-toggle="tab" data-bs-target="#discovery-pane"><i class="bi bi-compass"></i> Job Discovery (Top 10 Platforms)</button>
         </li>
         <li class="nav-item">
-            <button class="nav-link" id="jobs-tab" data-bs-toggle="tab" data-bs-target="#jobs-pane"><i class="bi bi-briefcase"></i> Tracked Jobs Explorer</button>
+            <button class="nav-link" id="review-tab" data-bs-toggle="tab" data-bs-target="#review-pane"><i class="bi bi-file-earmark-check"></i> Resume Review & Approvals</button>
         </li>
         <li class="nav-item">
-            <button class="nav-link" id="db-tab" data-bs-toggle="tab" data-bs-target="#db-pane" onclick="loadDbExplorer()"><i class="bi bi-database-gear"></i> Database Explorer & Cleanup</button>
+            <button class="nav-link" id="kanban-tab" data-bs-toggle="tab" data-bs-target="#kanban-pane"><i class="bi bi-kanban"></i> Application Board</button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" id="db-tab" data-bs-toggle="tab" data-bs-target="#db-pane" onclick="loadDbExplorer()"><i class="bi bi-database-gear"></i> Database Explorer</button>
         </li>
         <li class="nav-item">
             <button class="nav-link" id="profile-tab" data-bs-toggle="tab" data-bs-target="#profile-pane"><i class="bi bi-person-gear"></i> Profile & Skills Editor</button>
         </li>
         <li class="nav-item">
-            <button class="nav-link" id="cheatsheet-tab" data-bs-toggle="tab" data-bs-target="#cheatsheet-pane"><i class="bi bi-terminal"></i> CLI Command Runner</button>
-        </li>
-        <li class="nav-item">
-            <button class="nav-link" id="bookmarklet-tab" data-bs-toggle="tab" data-bs-target="#bookmarklet-pane"><i class="bi bi-bookmark-star"></i> Bookmarklet</button>
+            <button class="nav-link" id="cheatsheet-tab" data-bs-toggle="tab" data-bs-target="#cheatsheet-pane"><i class="bi bi-terminal"></i> CLI Runner</button>
         </li>
     </ul>
 
@@ -419,26 +363,39 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
             <div class="row g-3 mb-4">
                 <div class="col-md-3">
                     <div class="stat-card">
-                        <div class="text-muted small">Total Tracked Jobs</div>
+                        <div class="text-muted small">New Discovered Jobs</div>
                         <div class="stat-value text-primary" id="stat-total-jobs">-</div>
                     </div>
                 </div>
                 <div class="col-md-3">
                     <div class="stat-card">
-                        <div class="text-muted small">High Match Opportunities</div>
-                        <div class="stat-value text-success" id="stat-high-score">-</div>
+                        <div class="text-muted small">Jobs Requiring Review</div>
+                        <div class="stat-value text-warning" id="stat-review-count">-</div>
                     </div>
                 </div>
                 <div class="col-md-3">
                     <div class="stat-card">
-                        <div class="text-muted small">Follow-ups Due</div>
-                        <div class="stat-value text-warning" id="stat-followups">-</div>
+                        <div class="text-muted small">Draft Resumes Awaiting Approval</div>
+                        <div class="stat-value text-danger" id="stat-drafts-count">-</div>
                     </div>
                 </div>
                 <div class="col-md-3">
                     <div class="stat-card">
-                        <div class="text-muted small">Upcoming Interviews</div>
-                        <div class="stat-value text-info" id="stat-interviews">-</div>
+                        <div class="text-muted small">Applications In Progress</div>
+                        <div class="stat-value text-success" id="stat-applied-count">-</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Primary Action Bar -->
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-body d-flex flex-wrap gap-2 align-items-center justify-content-between py-3">
+                    <span class="fw-bold"><i class="bi bi-lightning-charge-fill text-warning"></i> Primary Actions:</span>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-primary" onclick="switchTab('discovery-tab')"><i class="bi bi-search"></i> Find Jobs Now (Top 10 Platforms)</button>
+                        <button class="btn btn-outline-primary" onclick="triggerQuickCommand('sync-gmail', [])"><i class="bi bi-envelope-at"></i> Sync Gmail Alerts</button>
+                        <button class="btn btn-outline-success" onclick="openImportUrlModal()"><i class="bi bi-link-45deg"></i> Import Job URL</button>
+                        <button class="btn btn-warning text-dark" onclick="switchTab('review-tab')"><i class="bi bi-file-earmark-check"></i> Review Resume Drafts</button>
                     </div>
                 </div>
             </div>
@@ -447,7 +404,7 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
                 <div class="col-md-8">
                     <div class="card border-0 shadow-sm mb-4">
                         <div class="card-header bg-white fw-bold d-flex justify-content-between align-items-center py-3">
-                            <span><i class="bi bi-star-fill text-warning"></i> High-Score Saved Opportunities</span>
+                            <span><i class="bi bi-star-fill text-warning"></i> High-Match Opportunities</span>
                             <button class="btn btn-sm btn-outline-primary" onclick="triggerQuickCommand('analyze', [])"><i class="bi bi-cpu"></i> Re-Score Jobs</button>
                         </div>
                         <div class="card-body p-0">
@@ -460,7 +417,7 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
                                             <th>Job Title</th>
                                             <th>Company</th>
                                             <th>Platform</th>
-                                            <th>Quick Actions</th>
+                                            <th>Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -473,14 +430,141 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
                 </div>
 
                 <div class="col-md-4">
+                    <!-- Activity Feed Card -->
                     <div class="card border-0 shadow-sm mb-4">
                         <div class="card-header bg-white fw-bold py-3">
-                            <i class="bi bi-pie-chart-fill text-primary"></i> Application Status Breakdown
+                            <i class="bi bi-activity text-primary"></i> Recent Activity Feed
                         </div>
-                        <div class="card-body">
-                            <ul class="list-group list-group-flush" id="status-counts-list">
-                                <li class="list-group-item text-muted">Loading breakdown...</li>
+                        <div class="card-body p-0" style="max-height: 380px; overflow-y: auto;">
+                            <ul class="list-group list-group-flush fs-8" id="activity-feed-list">
+                                <li class="list-group-item text-muted text-center py-3">Loading recent events...</li>
                             </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- JOB DISCOVERY PANE (TOP 10 USA PLATFORMS) -->
+        <div class="tab-pane fade" id="discovery-pane">
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white fw-bold py-3">
+                    <i class="bi bi-globe-americas text-primary"></i> Top 10 USA Job Platforms Adapter Suite
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-3">Search across Indeed, LinkedIn, Glassdoor, Monster, ZipRecruiter, CareerBuilder, SimplyHired, Dice, Wellfound, and Google Jobs (< 10 jobs per platform, posted in last 14 days).</p>
+                    <div class="row row-cols-2 row-cols-md-5 g-2 mb-3" id="top-10-platforms-grid">
+                        <!-- Top 10 cards generated dynamically -->
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center border-top pt-3">
+                        <div class="d-flex gap-2 align-items-center">
+                            <span class="small fw-bold">Platforms:</span>
+                            <span class="badge bg-secondary">Top 10 USA Supported</span>
+                        </div>
+                        <button class="btn btn-primary" id="btn-find-jobs-now" onclick="runTop10JobSearch()"><i class="bi bi-search"></i> Find Jobs Now</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Job Listings Table -->
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
+                    <h5 class="fw-bold mb-0"><i class="bi bi-list-stars"></i> Discovered Job Listings</h5>
+                    <button class="btn btn-sm btn-outline-primary" onclick="fetchJobs()"><i class="bi bi-arrow-clockwise"></i> Refresh List</button>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0" id="all-jobs-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Status</th>
+                                    <th>Score</th>
+                                    <th>Title</th>
+                                    <th>Company</th>
+                                    <th>Platform</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td colspan="7" class="text-center py-4 text-muted">Loading job listings...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- RESUME REVIEW & APPROVALS PANE -->
+        <div class="tab-pane fade" id="review-pane">
+            <div class="card border-0 shadow-sm max-w-900 mx-auto">
+                <div class="card-header bg-white fw-bold py-3 d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-shield-check text-success"></i> Review-First Resume Tailoring & Draft Approval</span>
+                    <span class="badge bg-warning text-dark"><i class="bi bi-lock-fill"></i> Human Approval Required</span>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info small mb-4">
+                        <i class="bi bi-info-circle-fill"></i> <strong>Safety Rule:</strong> Generating ATS tailored resumes creates a versioned draft in <code>_drafts/</code>. Your master resume and finalized applied resume are <strong>never overwritten</strong> until you click "Approve & Finalize".
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold">Select Job for Resume Review:</label>
+                        <select class="form-select" id="review-job-select" onchange="loadJobForReview(this.value)">
+                            <option value="">Select a job from list...</option>
+                        </select>
+                    </div>
+
+                    <div id="resume-review-details" style="display: none;">
+                        <!-- 3-Way Resume Version Cards -->
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-4">
+                                <div class="card border-secondary h-100">
+                                    <div class="card-header bg-light fw-bold small text-muted">1. Master Resume</div>
+                                    <div class="card-body fs-8">
+                                        <p class="mb-1"><strong>Source:</strong> <code id="rev-master-path">-</code></p>
+                                        <small class="text-muted">Factual source of truth. Unchanged.</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card border-warning h-100">
+                                    <div class="card-header bg-warning-subtle text-dark fw-bold small">2. Tailored Draft Resume</div>
+                                    <div class="card-body fs-8">
+                                        <p class="mb-1"><strong>Draft File:</strong> <code id="rev-draft-path">-</code></p>
+                                        <span class="badge bg-warning text-dark mb-2" id="rev-approval-badge">Awaiting Review</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card border-success h-100">
+                                    <div class="card-header bg-success-subtle text-success fw-bold small">3. Finalized Resume</div>
+                                    <div class="card-body fs-8">
+                                        <p class="mb-1"><strong>Final Folder:</strong> <code id="rev-final-path">Not finalized yet</code></p>
+                                        <small class="text-muted">Promoted only upon explicit approval.</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Diff / Change Summary Box -->
+                        <div class="card border-0 shadow-sm mb-4">
+                            <div class="card-header bg-dark text-white fw-bold small">
+                                <i class="bi bi-file-diff"></i> Tailoring Analysis & Change Summary
+                            </div>
+                            <div class="card-body bg-dark text-info font-monospace fs-8 p-3" id="rev-diff-summary" style="max-height: 250px; overflow-y: auto; white-space: pre-wrap;">
+                                Select a job above to view ATS keyword alignment and change summary...
+                            </div>
+                        </div>
+
+                        <!-- Approval Actions -->
+                        <div class="d-flex justify-content-between align-items-center bg-light p-3 rounded border">
+                            <div>
+                                <button class="btn btn-sm btn-outline-secondary" id="btn-create-draft" onclick="generateDraftForSelectedJob()"><i class="bi bi-cpu"></i> Generate New Draft</button>
+                            </div>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-danger" onclick="rejectDraftForSelectedJob()"><i class="bi bi-x-circle"></i> Reject Draft</button>
+                                <button class="btn btn-success fw-bold" onclick="promptApproveDraftModal()"><i class="bi bi-check-circle-fill"></i> Approve & Finalize Resume</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -494,41 +578,7 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
             </div>
         </div>
 
-        <!-- TRACKED JOBS EXPLORER PANE -->
-        <div class="tab-pane fade" id="jobs-pane">
-            <div class="card border-0 shadow-sm">
-                <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
-                    <h5 class="fw-bold mb-0"><i class="bi bi-card-checklist"></i> All Tracked Jobs Explorer</h5>
-                    <div class="d-flex gap-2">
-                        <button class="btn btn-sm btn-outline-primary" onclick="triggerQuickCommand('fetch-jobs', ['--platforms', 'dice,ziprecruiter', '--limit', '9'])"><i class="bi bi-download"></i> Fetch Jobs (<10)</button>
-                        <button class="btn btn-sm btn-primary" onclick="triggerQuickCommand('analyze', [])"><i class="bi bi-cpu"></i> Re-Score All Jobs</button>
-                    </div>
-                </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-hover align-middle mb-0" id="all-jobs-table">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Status</th>
-                                    <th>Score</th>
-                                    <th>Title</th>
-                                    <th>Company</th>
-                                    <th>Platform</th>
-                                    <th>Dup?</th>
-                                    <th>Interactive Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr><td colspan="8" class="text-center py-4 text-muted">Loading tracked jobs...</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- DATABASE EXPLORER & CLEANUP PANE -->
+        <!-- DATABASE EXPLORER PANE -->
         <div class="tab-pane fade" id="db-pane">
             <div class="row g-3 mb-4">
                 <div class="col-md-4">
@@ -541,15 +591,6 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
                             <div class="d-grid gap-2">
                                 <button class="btn btn-outline-secondary text-start" onclick="triggerQuickCleanup('duplicates')"><i class="bi bi-copy"></i> Delete Duplicate Jobs</button>
                                 <button class="btn btn-outline-warning text-start" onclick="triggerQuickCleanup('stale')"><i class="bi bi-hourglass-bottom"></i> Delete Stale & Excluded Jobs</button>
-                                <div class="input-group">
-                                    <select class="form-select form-select-sm" id="cleanup-status-select">
-                                        <option value="Saved">Saved</option>
-                                        <option value="Reviewing">Reviewing</option>
-                                        <option value="Rejected">Rejected</option>
-                                    </select>
-                                    <button class="btn btn-sm btn-outline-secondary" onclick="triggerStatusCleanup()">Delete by Status</button>
-                                </div>
-                                <hr>
                                 <button class="btn btn-danger text-start fw-bold" onclick="triggerQuickCleanup('all')"><i class="bi bi-exclamation-triangle-fill"></i> Purge All Database Test Data</button>
                             </div>
                         </div>
@@ -560,46 +601,23 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
                     <div class="card border-0 shadow-sm h-100">
                         <div class="card-header bg-white fw-bold d-flex justify-content-between align-items-center py-2">
                             <span><i class="bi bi-table text-primary"></i> SQLite Table Browser</span>
-                            <div class="d-flex align-items-center gap-2">
-                                <label class="small text-muted mb-0">Table:</label>
-                                <select class="form-select form-select-sm" id="db-table-selector" style="width: auto;" onchange="loadTableData(this.value)">
-                                    <option value="jobs">jobs</option>
-                                    <option value="contacts">contacts</option>
-                                    <option value="interviews">interviews</option>
-                                    <option value="application_answers">application_answers</option>
-                                    <option value="processed_emails">processed_emails</option>
-                                </select>
-                            </div>
+                            <select class="form-select form-select-sm" id="db-table-selector" style="width: auto;" onchange="loadTableData(this.value)">
+                                <option value="jobs">jobs</option>
+                                <option value="activity_logs">activity_logs</option>
+                                <option value="contacts">contacts</option>
+                                <option value="interviews">interviews</option>
+                                <option value="application_answers">application_answers</option>
+                                <option value="processed_emails">processed_emails</option>
+                            </select>
                         </div>
                         <div class="card-body p-0">
                             <div class="table-responsive" style="max-height: 380px; overflow-y: auto;">
                                 <table class="table table-sm table-hover align-middle mb-0 fs-8" id="db-browser-table">
-                                    <thead class="table-light">
-                                        <tr><th>Select a table above...</th></tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr><td class="text-center py-4 text-muted">Loading table data...</td></tr>
-                                    </tbody>
+                                    <thead class="table-light"><tr><th>Select a table above...</th></tr></thead>
+                                    <tbody><tr><td class="text-center py-4 text-muted">Loading table data...</td></tr></tbody>
                                 </table>
                             </div>
                         </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- SQL Query Console -->
-            <div class="card border-0 shadow-sm">
-                <div class="card-header bg-dark text-white fw-bold d-flex justify-content-between align-items-center py-2">
-                    <span><i class="bi bi-terminal text-success"></i> Interactive SQL Query Console (SQLite)</span>
-                    <button class="btn btn-sm btn-success" onclick="runCustomSqlQuery()"><i class="bi bi-play-fill"></i> Execute SQL</button>
-                </div>
-                <div class="card-body bg-dark text-white p-3">
-                    <textarea class="form-control font-monospace bg-dark text-light border-secondary mb-3" id="sql-query-input" rows="3" placeholder="Type raw SQL query (e.g., SELECT id, title, company, match_score, status FROM jobs WHERE match_score > 70 ORDER BY match_score DESC;)">SELECT id, title, company, status, match_score, source_platform FROM jobs ORDER BY id DESC LIMIT 20;</textarea>
-                    <div class="table-responsive" style="max-height: 250px; overflow-y: auto;">
-                        <table class="table table-dark table-sm table-striped font-monospace fs-8" id="sql-query-result-table">
-                            <thead><tr><th>Result will display here after execution...</th></tr></thead>
-                            <tbody></tbody>
-                        </table>
                     </div>
                 </div>
             </div>
@@ -646,17 +664,6 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
                             </div>
                         </div>
 
-                        <div class="row g-3 mb-4">
-                            <div class="col-md-6">
-                                <label class="form-label fw-semibold">Excluded Companies (comma separated)</label>
-                                <input type="text" class="form-control" id="prof-ex-companies">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label fw-semibold">Excluded Job Titles (comma separated)</label>
-                                <input type="text" class="form-control" id="prof-ex-titles">
-                            </div>
-                        </div>
-
                         <button type="submit" class="btn btn-primary"><i class="bi bi-save-fill"></i> Save Profile Configuration</button>
                     </form>
                 </div>
@@ -668,16 +675,12 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
             <div class="row">
                 <div class="col-md-7">
                     <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h5 class="fw-bold mb-0"><i class="bi bi-journal-code"></i> CLI Command Cheat Sheet</h5>
-                        <input type="text" id="cmd-search-input" class="form-control form-control-sm w-50" placeholder="🔍 Search commands (e.g., fetch, tailor, backup)..." onkeyup="filterCommands()">
+                        <h5 class="fw-bold mb-0"><i class="bi bi-journal-code"></i> CLI Command Runner</h5>
+                        <input type="text" id="cmd-search-input" class="form-control form-control-sm w-50" placeholder="🔍 Search commands..." onkeyup="filterCommands()">
                     </div>
-
-                    <div id="commands-accordion">
-                        <!-- Command categories loaded dynamically -->
-                    </div>
+                    <div id="commands-accordion"></div>
                 </div>
 
-                <!-- Live Command Output Terminal -->
                 <div class="col-md-5">
                     <div class="card border-0 shadow-sm sticky-top" style="top: 1rem;">
                         <div class="card-header bg-dark text-white fw-bold d-flex justify-content-between align-items-center">
@@ -685,49 +688,9 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
                             <button class="btn btn-sm btn-outline-secondary text-white" onclick="clearTerminal()">Clear</button>
                         </div>
                         <div class="card-body p-2 bg-dark">
-                            <div class="terminal-box" id="terminal-output">
-Ready. Select a CLI command on the left and click "Run Command" to view direct output here.
-                            </div>
+                            <div class="terminal-box" id="terminal-output">Ready. Select a CLI command on the left and click "Run Command".</div>
                         </div>
                     </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- BOOKMARKLET PANE -->
-        <div class="tab-pane fade" id="bookmarklet-pane">
-            <div class="card border-0 shadow-sm max-w-700 mx-auto">
-                <div class="card-header bg-white fw-bold py-3">
-                    <i class="bi bi-bookmark-star-fill text-warning"></i> 1-Click Chrome Bookmarklet Setup
-                </div>
-                <div class="card-body">
-                    <p class="text-muted">Save any job listing from Indeed, Dice, ZipRecruiter, Glassdoor, or LinkedIn directly into your local database while browsing in Chrome!</p>
-
-                    <ol class="ps-3 mb-4">
-                        <li class="mb-2">In Google Chrome, press <kbd>Ctrl + Shift + B</kbd> to show your Bookmarks Bar.</li>
-                        <li class="mb-2">Right-click the Bookmarks Bar -> Click <strong>Add page...</strong></li>
-                        <li class="mb-2">Set <strong>Name</strong> to: <code>Capture Job</code></li>
-                        <li class="mb-2">Set <strong>URL</strong> to the JavaScript snippet below:</li>
-                    </ol>
-
-                    <div class="mb-3">
-                        <textarea class="form-control font-monospace fs-7" id="bookmarklet-code" rows="8" readonly>javascript:(function(){
-  const title = document.querySelector('h1')?.innerText || document.title;
-  const company = document.querySelector('[data-testid="inlineHeader-companyName"], .companyName, .company-name, [data-cy="search-result-company-name"]')?.innerText || "Unknown";
-  const url = window.location.href;
-  const description = document.querySelector('#jobDescriptionText, .job-description, .description, #job-description')?.innerText || document.body.innerText.slice(0, 3000);
-
-  fetch('http://localhost:8000/capture', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({title, company, url, description})
-  })
-  .then(res => res.json())
-  .then(data => alert(`✅ Job Saved to Job Agent!\\n\\nID: #${data.job_id}\\nTitle: ${data.title}\\nCompany: ${data.company}\\nMatch Score: ${data.score}/100`))
-  .catch(err => alert('❌ Error: Make sure "python -m job_agent serve" is running in terminal.'));
-})();</textarea>
-                    </div>
-                    <button class="btn btn-outline-primary btn-sm" onclick="copyBookmarkletCode()"><i class="bi bi-clipboard"></i> Copy Bookmarklet Snippet</button>
                 </div>
             </div>
         </div>
@@ -735,26 +698,46 @@ Ready. Select a CLI command on the left and click "Run Command" to view direct o
     </div>
 </div>
 
-<!-- JOB DETAILS MODAL -->
-<div class="modal fade" id="jobDetailsModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+<!-- IMPORT URL MODAL -->
+<div class="modal fade" id="importUrlModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header bg-light">
-                <h5 class="modal-title fw-bold" id="modal-job-title">Job Details</h5>
+                <h5 class="modal-title fw-bold"><i class="bi bi-link-45deg"></i> Automated Job Import from URL</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <div class="modal-body" id="modal-job-body">
-                Loading details...
+            <div class="modal-body">
+                <p class="text-muted small mb-3">Paste a job listing URL below. Title, company, location, and description will be extracted automatically.</p>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Job Page URL:</label>
+                    <input type="url" class="form-control" id="import-url-input" placeholder="https://www.linkedin.com/jobs/view/123456 or https://www.indeed.com/viewjob?jk=abc">
+                </div>
             </div>
-            <div class="modal-footer bg-light d-flex justify-content-between">
-                <div>
-                    <button class="btn btn-sm btn-outline-secondary" onclick="openJobFolderInExplorer()"><i class="bi bi-folder2-open"></i> Open Desktop Folder</button>
-                    <button class="btn btn-sm btn-outline-primary" id="modal-job-url-btn" onclick="openJobUrlExternal()"><i class="bi bi-box-arrow-up-right"></i> Open Link</button>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success btn-sm" onclick="runAutomatedUrlImport()"><i class="bi bi-download"></i> Import Job</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- APPROVE DRAFT CONFIRMATION MODAL -->
+<div class="modal fade" id="approveDraftModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title fw-bold"><i class="bi bi-check-circle-fill"></i> Confirm Resume Approval</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="fw-semibold text-dark">Are you sure you want to approve and finalize this tailored resume?</p>
+                <div class="p-3 bg-light rounded border text-muted small mb-3">
+                    <i class="bi bi-shield-check text-success"></i> <strong>Explicit Action:</strong> This will save the approved version to the <code>jobapplied</code> folder (<code>~/Desktop/Jobs Applied/&lt;Company&gt;/&lt;Job Title&gt;/</code>). Your master resume remains unchanged.
                 </div>
-                <div class="d-flex gap-2">
-                    <button class="btn btn-sm btn-primary" onclick="triggerModalAction('tailor')"><i class="bi bi-file-word"></i> Tailor DOCX</button>
-                    <button class="btn btn-sm btn-success" onclick="triggerModalAction('mark-applied')"><i class="bi bi-check-circle"></i> Mark Applied</button>
-                </div>
+            </div>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success btn-sm fw-bold" onclick="executeApproveDraft()"><i class="bi bi-check-lg"></i> Confirm & Finalize</button>
             </div>
         </div>
     </div>
@@ -763,20 +746,41 @@ Ready. Select a CLI command on the left and click "Run Command" to view direct o
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
     let metadataCommands = [];
-    let currentModalJobId = null;
-    let currentModalJobUrl = null;
+    let currentReviewJobId = null;
 
-    const KANBAN_STATUSES = ["Saved", "Reviewing", "Ready to apply", "Applied", "Interviewing", "Offer", "Rejected"];
+    const KANBAN_STATUSES = ["Imported", "Analyzed", "Resume draft ready", "Awaiting review", "Approved", "Applied", "Interviewing", "Offer", "Rejected"];
+    const TOP_10 = ["indeed", "linkedin", "glassdoor", "monster", "ziprecruiter", "careerbuilder", "simplyhired", "dice", "wellfound", "google_jobs"];
 
     document.addEventListener("DOMContentLoaded", function() {
+        renderTop10PlatformsGrid();
         loadAllData();
         loadCommandsMetadata();
         fetchProfile();
     });
 
+    function renderTop10PlatformsGrid() {
+        const grid = document.getElementById('top-10-platforms-grid');
+        grid.innerHTML = '';
+        TOP_10.forEach(p => {
+            grid.innerHTML += `
+                <div class="col">
+                    <div class="platform-card shadow-sm">
+                        <i class="bi bi-check-circle-fill text-success"></i>
+                        <div class="fw-bold text-dark fs-8 text-capitalize mt-1">${p.replace('_', ' ')}</div>
+                    </div>
+                </div>`;
+        });
+    }
+
     function loadAllData() {
         fetchStats();
         fetchJobs();
+        fetchActivityFeed();
+    }
+
+    function switchTab(tabId) {
+        const el = document.getElementById(tabId);
+        bootstrap.Tab.getInstance(el)?.show() || new bootstrap.Tab(el).show();
     }
 
     function fetchStats() {
@@ -784,36 +788,28 @@ Ready. Select a CLI command on the left and click "Run Command" to view direct o
             .then(res => res.json())
             .then(data => {
                 document.getElementById('stat-total-jobs').innerText = data.total_jobs || 0;
-                document.getElementById('stat-high-score').innerText = (data.high_score_jobs || []).length;
-                document.getElementById('stat-followups').innerText = (data.followups_due || []).length;
-                document.getElementById('stat-interviews').innerText = (data.upcoming_interviews || []).length;
+                document.getElementById('stat-review-count').innerText = data.status_counts['Awaiting review'] || data.status_counts['Imported'] || 0;
+                document.getElementById('stat-drafts-count').innerText = data.status_counts['Resume draft ready'] || 0;
+                document.getElementById('stat-applied-count').innerText = data.status_counts['Applied'] || data.status_counts['Approved'] || 0;
 
-                // Render status counts
-                const statusList = document.getElementById('status-counts-list');
-                statusList.innerHTML = '';
-                for (const [st, cnt] of Object.entries(data.status_counts || {})) {
-                    statusList.innerHTML += `<li class="list-group-item d-flex justify-content-between align-items-center fw-medium">${st} <span class="badge bg-primary rounded-pill">${cnt}</span></li>`;
-                }
-
-                // Render high score table
+                // High score table
                 const hsBody = document.querySelector('#high-score-table tbody');
                 hsBody.innerHTML = '';
                 if (!data.high_score_jobs || data.high_score_jobs.length === 0) {
-                    hsBody.innerHTML = '<tr><td colspan="6" class="text-center py-3 text-muted">No high-score saved opportunities yet. Run "analyze" or "fetch-jobs".</td></tr>';
+                    hsBody.innerHTML = '<tr><td colspan="6" class="text-center py-3 text-muted">No high-score jobs. Click "Find Jobs Now".</td></tr>';
                 } else {
-                    data.high_score_jobs.slice(0, 10).forEach(j => {
+                    data.high_score_jobs.slice(0, 8).forEach(j => {
                         hsBody.innerHTML += `
                             <tr>
                                 <td><strong>#${j.id}</strong></td>
                                 <td><span class="badge bg-success badge-score">${Math.round(j.match_score)}</span></td>
-                                <td><a href="#" class="text-decoration-none fw-bold" onclick="showJobDetails('${j.id}')">${escapeHtml(j.title)}</a></td>
+                                <td><strong class="text-primary">${escapeHtml(j.title)}</strong></td>
                                 <td>${escapeHtml(j.company)}</td>
                                 <td><small class="text-muted">${j.source_platform}</small></td>
                                 <td>
-                                    <button class="btn btn-xs btn-outline-primary py-0 px-2" onclick="triggerQuickCommand('tailor', ['${j.id}'])">Tailor DOCX</button>
+                                    <button class="btn btn-xs btn-outline-primary py-0 px-2" onclick="createDraftForJob('${j.id}')">Tailor Draft</button>
                                 </td>
-                            </tr>
-                        `;
+                            </tr>`;
                     });
                 }
             });
@@ -825,6 +821,7 @@ Ready. Select a CLI command on the left and click "Run Command" to view direct o
             .then(jobs => {
                 renderAllJobsTable(jobs);
                 renderKanbanBoard(jobs);
+                populateReviewJobSelect(jobs);
             });
     }
 
@@ -832,7 +829,7 @@ Ready. Select a CLI command on the left and click "Run Command" to view direct o
         const tbody = document.querySelector('#all-jobs-table tbody');
         tbody.innerHTML = '';
         if (!jobs || jobs.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-muted">No jobs tracked yet. Run "fetch-jobs" or use the 1-click Chrome bookmarklet!</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-muted">No jobs tracked. Click "Find Jobs Now" or "Import URL".</td></tr>';
             return;
         }
         jobs.forEach(j => {
@@ -842,19 +839,16 @@ Ready. Select a CLI command on the left and click "Run Command" to view direct o
                     <td><strong>#${j.id}</strong></td>
                     <td><span class="badge bg-info text-dark">${j.status}</span></td>
                     <td>${scoreBadge}</td>
-                    <td><a href="#" class="text-decoration-none fw-semibold" onclick="showJobDetails('${j.id}')">${escapeHtml(j.title)}</a></td>
+                    <td><strong class="text-primary">${escapeHtml(j.title)}</strong></td>
                     <td>${escapeHtml(j.company)}</td>
                     <td><small class="text-muted">${j.source_platform}</small></td>
-                    <td>${j.is_duplicate ? '<span class="text-danger">Yes</span>' : ''}</td>
                     <td>
                         <div class="btn-group btn-group-sm">
-                            <button class="btn btn-outline-secondary" onclick="showJobDetails('${j.id}')"><i class="bi bi-eye"></i> Details</button>
-                            <button class="btn btn-outline-primary" onclick="triggerQuickCommand('tailor', ['${j.id}'])"><i class="bi bi-file-word"></i> Tailor</button>
-                            <button class="btn btn-outline-success" onclick="triggerQuickCommand('mark-applied', ['${j.id}', '--confirm'])"><i class="bi bi-check-circle"></i> Applied</button>
+                            <button class="btn btn-outline-primary" onclick="createDraftForJob('${j.id}')"><i class="bi bi-file-earmark-diff"></i> Draft Resume</button>
+                            <button class="btn btn-outline-success" onclick="selectForReview('${j.id}')"><i class="bi bi-check-lg"></i> Review</button>
                         </div>
                     </td>
-                </tr>
-            `;
+                </tr>`;
         });
     }
 
@@ -869,12 +863,12 @@ Ready. Select a CLI command on the left and click "Run Command" to view direct o
             statusJobs.forEach(j => {
                 const scoreBadge = j.match_score ? `<span class="badge bg-success ms-auto">${Math.round(j.match_score)}</span>` : '';
                 cardsHtml += `
-                    <div class="kanban-card" onclick="showJobDetails('${j.id}')">
+                    <div class="kanban-card" onclick="selectForReview('${j.id}')">
                         <div class="d-flex align-items-center mb-1">
                             <strong class="text-dark fs-7">#${j.id}</strong>
                             ${scoreBadge}
                         </div>
-                        <div class="fw-bold text-primary text-truncate mb-1" style="font-size:0.9rem;">${escapeHtml(j.title)}</div>
+                        <div class="fw-bold text-primary text-truncate mb-1" style="font-size:0.85rem;">${escapeHtml(j.title)}</div>
                         <div class="text-muted small text-truncate mb-2">${escapeHtml(j.company)}</div>
                         <div class="d-flex justify-content-between align-items-center border-top pt-2 mt-2">
                             <small class="text-muted fs-8">${j.source_platform}</small>
@@ -889,12 +883,170 @@ Ready. Select a CLI command on the left and click "Run Command" to view direct o
                 <div class="col">
                     <div class="kanban-col">
                         <div class="d-flex justify-content-between align-items-center mb-3">
-                            <h6 class="fw-bold mb-0 text-dark">${status}</h6>
+                            <h6 class="fw-bold mb-0 text-dark fs-8">${status}</h6>
                             <span class="badge bg-white text-dark border">${statusJobs.length}</span>
                         </div>
                         ${cardsHtml || '<div class="text-muted fs-8 text-center py-4">No jobs</div>'}
                     </div>
                 </div>`;
+        });
+    }
+
+    function fetchActivityFeed() {
+        fetch('/api/activities')
+            .then(res => res.json())
+            .then(acts => {
+                const list = document.getElementById('activity-feed-list');
+                list.innerHTML = '';
+                if (!acts || acts.length === 0) {
+                    list.innerHTML = '<li class="list-group-item text-muted text-center py-3">No activity logged yet.</li>';
+                    return;
+                }
+                acts.forEach(a => {
+                    list.innerHTML += `
+                        <li class="list-group-item py-2">
+                            <div class="d-flex justify-content-between">
+                                <strong class="text-dark">${escapeHtml(a.title)}</strong>
+                                <small class="text-muted fs-8">${a.created_at || ''}</small>
+                            </div>
+                            <small class="text-muted">${escapeHtml(a.description || '')}</small>
+                        </li>`;
+                });
+            });
+    }
+
+    function populateReviewJobSelect(jobs) {
+        const sel = document.getElementById('review-job-select');
+        sel.innerHTML = '<option value="">Select a job from list...</option>';
+        (jobs || []).forEach(j => {
+            sel.innerHTML += `<option value="${j.id}">#${j.id}: ${escapeHtml(j.title)} at ${escapeHtml(j.company)} (${j.status})</option>`;
+        });
+    }
+
+    function selectForReview(jobId) {
+        document.getElementById('review-job-select').value = jobId;
+        loadJobForReview(jobId);
+        switchTab('review-tab');
+    }
+
+    function loadJobForReview(jobId) {
+        if (!jobId) {
+            document.getElementById('resume-review-details').style.display = 'none';
+            return;
+        }
+        currentReviewJobId = jobId;
+        document.getElementById('resume-review-details').style.display = 'block';
+
+        fetch(`/api/draft/get?job_id=${jobId}`)
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('rev-master-path').innerText = data.master_resume_path || 'Set in config.yaml';
+                document.getElementById('rev-draft-path').innerText = data.draft_resume_path || 'No draft generated yet';
+                document.getElementById('rev-final-path').innerText = data.final_resume_path || 'Not finalized yet';
+                document.getElementById('rev-approval-badge').innerText = data.approval_status || 'Awaiting Review';
+                document.getElementById('rev-diff-summary').innerText = data.diff_summary || 'No diff summary available. Click "Generate New Draft" above.';
+            });
+    }
+
+    function createDraftForJob(jobId) {
+        fetch('/api/draft/create', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({job_id: parseInt(jobId)})
+        })
+        .then(res => res.json())
+        .then(data => {
+            alert('✅ Resume Draft Created! Opening Review screen...');
+            selectForReview(jobId);
+            loadAllData();
+        });
+    }
+
+    function generateDraftForSelectedJob() {
+        if (currentReviewJobId) createDraftForJob(currentReviewJobId);
+    }
+
+    function promptApproveDraftModal() {
+        if (!currentReviewJobId) return;
+        const modal = new bootstrap.Modal(document.getElementById('approveDraftModal'));
+        modal.show();
+    }
+
+    function executeApproveDraft() {
+        if (!currentReviewJobId) return;
+        fetch('/api/draft/approve', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({job_id: parseInt(currentReviewJobId)})
+        })
+        .then(res => res.json())
+        .then(data => {
+            bootstrap.Modal.getInstance(document.getElementById('approveDraftModal'))?.hide();
+            alert('✅ Resume Approved & Finalized! Saved to jobapplied folder:\n\n' + data.final_resume_path);
+            loadJobForReview(currentReviewJobId);
+            loadAllData();
+        });
+    }
+
+    function rejectDraftForSelectedJob() {
+        if (!currentReviewJobId) return;
+        if (!confirm('Reject draft and revert job status?')) return;
+        fetch('/api/draft/reject', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({job_id: parseInt(currentReviewJobId)})
+        })
+        .then(res => res.json())
+        .then(data => {
+            alert('Draft rejected.');
+            loadJobForReview(currentReviewJobId);
+            loadAllData();
+        });
+    }
+
+    function runTop10JobSearch() {
+        const btn = document.getElementById('btn-find-jobs-now');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Searching Top 10 Platforms...';
+
+        fetch('/api/jobs/find', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({platforms: TOP_10})
+        })
+        .then(res => res.json())
+        .then(data => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-search"></i> Find Jobs Now';
+            alert(`✅ Platform Search Complete!\n\nDiscovered ${data.jobs_recorded} jobs across platforms.`);
+            loadAllData();
+        })
+        .catch(err => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-search"></i> Find Jobs Now';
+            alert('Search encountered an error: ' + err);
+        });
+    }
+
+    function openImportUrlModal() {
+        const modal = new bootstrap.Modal(document.getElementById('importUrlModal'));
+        modal.show();
+    }
+
+    function runAutomatedUrlImport() {
+        const url = document.getElementById('import-url-input').value;
+        if (!url) return;
+
+        fetch('/api/jobs/import-url', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({url: url})
+        })
+        .then(res => res.json())
+        .then(data => {
+            bootstrap.Modal.getInstance(document.getElementById('importUrlModal'))?.hide();
+            alert(`✅ Job Imported Successfully!\n\nID: #${data.job_id}\nTitle: ${data.title}\nCompany: ${data.company}\nMatch Score: ${data.score}/100`);
+            loadAllData();
         });
     }
 
@@ -906,77 +1058,8 @@ Ready. Select a CLI command on the left and click "Run Command" to view direct o
         })
         .then(res => res.json())
         .then(data => {
-            if (data.status === 'success') {
-                loadAllData();
-            }
+            if (data.status === 'success') loadAllData();
         });
-    }
-
-    function showJobDetails(jobId) {
-        currentModalJobId = jobId;
-        const modal = new bootstrap.Modal(document.getElementById('jobDetailsModal'));
-        document.getElementById('modal-job-title').innerText = `Loading Job #${jobId}...`;
-        document.getElementById('modal-job-body').innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>';
-        modal.show();
-
-        fetch(`/api/job-details?id=${jobId}`)
-            .then(res => res.json())
-            .then(j => {
-                currentModalJobUrl = j.job_url;
-                document.getElementById('modal-job-title').innerText = `Job #${j.id}: ${j.title} at ${j.company}`;
-                
-                const matchedBadges = (j.matched_skills || []).map(s => `<span class="badge bg-success-subtle text-success border border-success me-1 mb-1">${escapeHtml(s)}</span>`).join('');
-                const missingBadges = (j.missing_skills || []).map(s => `<span class="badge bg-danger-subtle text-danger border border-danger me-1 mb-1">${escapeHtml(s)}</span>`).join('');
-
-                document.getElementById('modal-job-body').innerHTML = `
-                    <div class="row g-3 mb-3">
-                        <div class="col-md-4"><strong>Status:</strong> <span class="badge bg-info text-dark">${j.status}</span></div>
-                        <div class="col-md-4"><strong>Match Score:</strong> <span class="badge bg-success">${j.match_score ? Math.round(j.match_score) + '/100' : 'N/A'}</span></div>
-                        <div class="col-md-4"><strong>Platform:</strong> ${j.source_platform}</div>
-                    </div>
-                    <div class="mb-3">
-                        <strong>Location:</strong> ${escapeHtml(j.location || 'Not specified')} | 
-                        <strong>Salary:</strong> ${escapeHtml(j.salary || 'Not specified')}
-                    </div>
-                    <div class="mb-3">
-                        <h6 class="fw-bold mb-1 text-success">Matched Skills</h6>
-                        <div>${matchedBadges || '<span class="text-muted small">None listed</span>'}</div>
-                    </div>
-                    <div class="mb-3">
-                        <h6 class="fw-bold mb-1 text-danger">Missing Skills / Keywords</h6>
-                        <div>${missingBadges || '<span class="text-muted small">None missing</span>'}</div>
-                    </div>
-                    <div class="mb-3">
-                        <h6 class="fw-bold mb-1">Job Description</h6>
-                        <div class="p-3 bg-light rounded border text-muted fs-7" style="max-height: 250px; overflow-y: auto; white-space: pre-wrap;">${escapeHtml(j.description || 'No description provided.')}</div>
-                    </div>
-                `;
-            });
-    }
-
-    function triggerModalAction(action) {
-        if (!currentModalJobId) return;
-        if (action === 'tailor') {
-            triggerQuickCommand('tailor', [currentModalJobId]);
-        } else if (action === 'mark-applied') {
-            triggerQuickCommand('mark-applied', [currentModalJobId, '--confirm']);
-        }
-        bootstrap.Modal.getInstance(document.getElementById('jobDetailsModal'))?.hide();
-    }
-
-    function openJobFolderInExplorer() {
-        if (!currentModalJobId) return;
-        fetch('/api/open-folder', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({job_id: parseInt(currentModalJobId)})
-        });
-    }
-
-    function openJobUrlExternal() {
-        if (currentModalJobUrl) {
-            window.open(currentModalJobUrl, '_blank');
-        }
     }
 
     function loadDbExplorer() {
@@ -1041,51 +1124,6 @@ Ready. Select a CLI command on the left and click "Run Command" to view direct o
         });
     }
 
-    function triggerStatusCleanup() {
-        const st = document.getElementById('cleanup-status-select').value;
-        if (!confirm(`Delete all jobs with status '${st}'?`)) return;
-        fetch('/api/db/cleanup', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({action: 'status', status: st})
-        })
-        .then(res => res.json())
-        .then(data => {
-            alert('✅ Cleanup complete: ' + data.message);
-            loadAllData();
-            loadDbExplorer();
-        });
-    }
-
-    function runCustomSqlQuery() {
-        const q = document.getElementById('sql-query-input').value;
-        if (!q) return;
-        fetch('/api/db/query', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({query: q})
-        })
-        .then(res => res.json())
-        .then(data => {
-            const tableEl = document.getElementById('sql-query-result-table');
-            if (!data.success) {
-                tableEl.innerHTML = `<thead><tr><th class="text-danger">SQL Error</th></tr></thead><tbody><tr><td>${data.error || 'Execution failed.'}</td></tr></tbody>`;
-                return;
-            }
-            if (!data.columns || data.columns.length === 0) {
-                tableEl.innerHTML = `<thead><tr><th class="text-success">Query Executed</th></tr></thead><tbody><tr><td>${data.message || 'Done'}</td></tr></tbody>`;
-                return;
-            }
-            let thead = '<tr>' + data.columns.map(c => `<th>${c}</th>`).join('') + '</tr>';
-            let tbody = '';
-            data.rows.forEach(r => {
-                tbody += '<tr>' + r.map(v => `<td>${escapeHtml(String(v ?? '-'))}</td>`).join('') + '</tr>';
-            });
-            tableEl.innerHTML = `<thead>${thead}</thead><tbody>${tbody}</tbody>`;
-            loadAllData();
-        });
-    }
-
     function fetchProfile() {
         fetch('/api/profile')
             .then(res => res.json())
@@ -1096,8 +1134,6 @@ Ready. Select a CLI command on the left and click "Run Command" to view direct o
                 document.getElementById('prof-pref-skills').value = (p.preferred_skills || []).join(', ');
                 document.getElementById('prof-locations').value = (p.locations || []).join(', ');
                 document.getElementById('prof-salary').value = p.salary_min || 120000;
-                document.getElementById('prof-ex-companies').value = (p.excluded_companies || []).join(', ');
-                document.getElementById('prof-ex-titles').value = (p.excluded_titles || []).join(', ');
             });
     }
 
@@ -1110,8 +1146,6 @@ Ready. Select a CLI command on the left and click "Run Command" to view direct o
             preferred_skills: document.getElementById('prof-pref-skills').value.split(',').map(s => s.trim()).filter(Boolean),
             locations: document.getElementById('prof-locations').value.split(',').map(s => s.trim()).filter(Boolean),
             salary_min: parseInt(document.getElementById('prof-salary').value || 0),
-            excluded_companies: document.getElementById('prof-ex-companies').value.split(',').map(s => s.trim()).filter(Boolean),
-            excluded_titles: document.getElementById('prof-ex-titles').value.split(',').map(s => s.trim()).filter(Boolean),
         };
 
         fetch('/api/profile', {
@@ -1121,7 +1155,7 @@ Ready. Select a CLI command on the left and click "Run Command" to view direct o
         })
         .then(res => res.json())
         .then(data => {
-            alert('✅ Profile configuration saved to config.yaml!');
+            alert('✅ Profile saved to config.yaml!');
             loadAllData();
         });
     }
@@ -1238,8 +1272,7 @@ Ready. Select a CLI command on the left and click "Run Command" to view direct o
     }
 
     function triggerQuickCommand(cmd, args) {
-        const tabEl = document.getElementById('cheatsheet-tab');
-        bootstrap.Tab.getInstance(tabEl)?.show() || new bootstrap.Tab(tabEl).show();
+        switchTab('cheatsheet-tab');
         executeCommandOnServer(cmd, args);
     }
 
@@ -1263,7 +1296,7 @@ Ready. Select a CLI command on the left and click "Run Command" to view direct o
     }
 
     function clearTerminal() {
-        document.getElementById('terminal-output').innerText = 'Terminal cleared. Select a command to run.';
+        document.getElementById('terminal-output').innerText = 'Terminal cleared.';
     }
 
     function filterCommands() {
@@ -1273,13 +1306,6 @@ Ready. Select a CLI command on the left and click "Run Command" to view direct o
             const text = card.innerText.toLowerCase();
             card.style.display = text.includes(query) ? 'block' : 'none';
         });
-    }
-
-    function copyBookmarkletCode() {
-        const textarea = document.getElementById('bookmarklet-code');
-        textarea.select();
-        document.execCommand('copy');
-        alert('✅ Bookmarklet code copied to clipboard!');
     }
 
     function escapeHtml(str) {
@@ -1346,28 +1372,41 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
                         {"id": j.id, "title": j.title, "company": j.company, "match_score": j.match_score, "source_platform": j.source_platform}
                         for j in summary["high_score_jobs"]
                     ]
-                    followups = [
-                        {"id": f.id, "title": f.title, "company": f.company, "follow_up_date": f.follow_up_date.strftime("%Y-%m-%d")}
-                        for f in summary["followups_due"] if f.follow_up_date
-                    ]
-                    interviews = [
-                        {"job_id": iv.job_id, "interview_date": iv.interview_date.strftime("%Y-%m-%d %H:%M"), "interview_type": iv.interview_type}
-                        for iv in summary["upcoming_interviews"] if iv.interview_date
-                    ]
                     payload = {
                         "total_jobs": summary["total_jobs"],
                         "status_counts": summary["status_counts"],
-                        "platform_counts": summary["platform_counts"],
                         "high_score_jobs": high_scores,
-                        "stale_jobs_count": summary["stale_jobs_count"],
-                        "upcoming_interviews": interviews,
-                        "followups_due": followups,
                     }
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json")
                     self._set_cors_headers()
                     self.end_headers()
                     self.wfile.write(json.dumps(payload).encode("utf-8"))
+                finally:
+                    session.close()
+
+            elif url_path == "/api/activities":
+                settings = get_settings()
+                SessionLocal = init_db(settings.database_path)
+                session = SessionLocal()
+                try:
+                    stmt = select(ActivityLogRecord).order_by(ActivityLogRecord.id.desc()).limit(20)
+                    acts = session.scalars(stmt).all()
+                    act_list = [
+                        {
+                            "id": a.id,
+                            "event_type": a.event_type,
+                            "title": a.title,
+                            "description": a.description,
+                            "created_at": a.created_at.strftime("%Y-%m-%d %H:%M") if a.created_at else "",
+                        }
+                        for a in acts
+                    ]
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self._set_cors_headers()
+                    self.end_headers()
+                    self.wfile.write(json.dumps(act_list).encode("utf-8"))
                 finally:
                     session.close()
 
@@ -1398,10 +1437,10 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
                 finally:
                     session.close()
 
-            elif url_path == "/api/job-details":
-                job_id_str = (query_params.get("id") or ["0"])[0]
-                job_id = int(job_id_str)
+            elif url_path == "/api/draft/get":
+                job_id = int((query_params.get("job_id") or ["0"])[0])
                 settings = get_settings()
+                profile = load_candidate_profile()
                 SessionLocal = init_db(settings.database_path)
                 session = SessionLocal()
                 try:
@@ -1409,22 +1448,18 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
                     if not j:
                         self.send_error(404, "Job not found")
                         return
-                    matched_list = [s.strip() for s in (j.matched_skills or "").split(",") if s.strip()]
-                    missing_list = [s.strip() for s in (j.missing_skills or "").split(",") if s.strip()]
+
+                    master_path = profile.get_master_resume_path(j.title) or str(settings.master_resume_path or "Not configured")
+
                     payload = {
-                        "id": j.id,
+                        "job_id": j.id,
                         "title": j.title,
                         "company": j.company,
-                        "status": j.status,
-                        "match_score": j.match_score,
-                        "location": j.location,
-                        "salary": j.salary,
-                        "source_platform": j.source_platform,
-                        "job_url": j.job_url,
-                        "description": j.description,
-                        "matched_skills": matched_list,
-                        "missing_skills": missing_list,
-                        "notes": j.notes or j.user_notes,
+                        "master_resume_path": master_path,
+                        "draft_resume_path": j.draft_resume_path or "",
+                        "final_resume_path": j.final_resume_path or j.tailored_resume_path or "",
+                        "approval_status": j.approval_status or "Not created",
+                        "diff_summary": j.diff_summary or "No draft generated yet.",
                     }
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json")
@@ -1435,7 +1470,7 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
                     session.close()
 
             elif url_path == "/api/db/tables":
-                payload = {"tables": ["jobs", "contacts", "interviews", "application_answers", "processed_emails"]}
+                payload = {"tables": ["jobs", "activity_logs", "contacts", "interviews", "application_answers", "processed_emails"]}
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self._set_cors_headers()
@@ -1444,7 +1479,7 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
 
             elif url_path == "/api/db/table-data":
                 table_name = (query_params.get("table") or ["jobs"])[0]
-                valid_tables = {"jobs", "contacts", "interviews", "application_answers", "processed_emails"}
+                valid_tables = {"jobs", "activity_logs", "contacts", "interviews", "application_answers", "processed_emails"}
                 if table_name not in valid_tables:
                     self.send_error(400, "Invalid table name")
                     return
@@ -1479,8 +1514,6 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
                     "years_experience": profile.years_experience,
                     "locations": profile.locations,
                     "salary_min": profile.salary_min,
-                    "excluded_companies": profile.excluded_companies,
-                    "excluded_titles": profile.excluded_titles,
                 }
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
@@ -1523,50 +1556,177 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(json.dumps(res).encode("utf-8"))
 
+            elif url_path == "/api/jobs/import-url":
+                data = json.loads(body)
+                url = data.get("url") or ""
+                if not url:
+                    self.send_error(400, "URL required")
+                    return
+
+                settings = get_settings()
+                profile = load_candidate_profile()
+                SessionLocal = init_db(settings.database_path)
+                session = SessionLocal()
+                try:
+                    parsed = import_job_from_url(url)
+                    record, match, dupe = record_parsed_job(session, parsed, profile)
+                    log_activity(
+                        session,
+                        event_type="import",
+                        title=f"Imported Job #{record.id} via URL",
+                        description=f"{record.title} at {record.company} ({record.source_platform})",
+                        job_id=record.id,
+                    )
+                    payload = {
+                        "status": "success",
+                        "job_id": record.id,
+                        "title": record.title,
+                        "company": record.company,
+                        "score": match.score,
+                    }
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self._set_cors_headers()
+                    self.end_headers()
+                    self.wfile.write(json.dumps(payload).encode("utf-8"))
+                finally:
+                    session.close()
+
+            elif url_path == "/api/jobs/find":
+                data = json.loads(body)
+                platforms = data.get("platforms") or TOP_10_PLATFORMS
+
+                settings = get_settings()
+                profile = load_candidate_profile()
+                SessionLocal = init_db(settings.database_path)
+                session = SessionLocal()
+                try:
+                    results = search_and_import_jobs(session, profile, platforms=platforms, limit_per_platform=9)
+                    payload = {"status": "success", "jobs_recorded": len(results)}
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self._set_cors_headers()
+                    self.end_headers()
+                    self.wfile.write(json.dumps(payload).encode("utf-8"))
+                finally:
+                    session.close()
+
+            elif url_path == "/api/draft/create":
+                data = json.loads(body)
+                job_id = int(data.get("job_id", 0))
+
+                settings = get_settings()
+                profile = load_candidate_profile()
+                SessionLocal = init_db(settings.database_path)
+                session = SessionLocal()
+                try:
+                    job, draft_path, summary_path, diff_summary = create_resume_draft_for_job(
+                        session=session,
+                        job_id=job_id,
+                        profile=profile,
+                        settings=settings,
+                    )
+                    payload = {
+                        "status": "success",
+                        "job_id": job.id,
+                        "draft_path": str(draft_path),
+                        "diff_summary": diff_summary,
+                    }
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self._set_cors_headers()
+                    self.end_headers()
+                    self.wfile.write(json.dumps(payload).encode("utf-8"))
+                finally:
+                    session.close()
+
+            elif url_path == "/api/draft/approve":
+                data = json.loads(body)
+                job_id = int(data.get("job_id", 0))
+
+                settings = get_settings()
+                SessionLocal = init_db(settings.database_path)
+                session = SessionLocal()
+                try:
+                    job, final_path = approve_resume_draft_for_job(
+                        session=session,
+                        job_id=job_id,
+                        settings=settings,
+                    )
+                    payload = {
+                        "status": "success",
+                        "job_id": job.id,
+                        "final_resume_path": str(final_path),
+                    }
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self._set_cors_headers()
+                    self.end_headers()
+                    self.wfile.write(json.dumps(payload).encode("utf-8"))
+                finally:
+                    session.close()
+
+            elif url_path == "/api/draft/reject":
+                data = json.loads(body)
+                job_id = int(data.get("job_id", 0))
+
+                settings = get_settings()
+                SessionLocal = init_db(settings.database_path)
+                session = SessionLocal()
+                try:
+                    job = reject_resume_draft_for_job(session=session, job_id=job_id)
+                    payload = {"status": "success", "job_id": job.id}
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self._set_cors_headers()
+                    self.end_headers()
+                    self.wfile.write(json.dumps(payload).encode("utf-8"))
+                finally:
+                    session.close()
+
+            elif url_path == "/api/jobs/update-status":
+                data = json.loads(body)
+                job_id = int(data.get("job_id", 0))
+                new_status = str(data.get("status") or "Saved")
+
+                settings = get_settings()
+                SessionLocal = init_db(settings.database_path)
+                session = SessionLocal()
+                try:
+                    update_status(session, job_id, new_status, confirm_applied=True)
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self._set_cors_headers()
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"status": "success", "job_id": job_id, "new_status": new_status}).encode("utf-8"))
+                finally:
+                    session.close()
+
             elif url_path == "/api/db/query":
                 data = json.loads(body)
-                query_str = (data.get("query") or "").strip()
-                if not query_str:
-                    self.send_error(400, "Empty SQL query")
-                    return
+                sql_query = data.get("query") or "SELECT 1;"
                 settings = get_settings()
                 engine = create_db_engine(settings.database_path)
-                try:
-                    with engine.begin() as conn:
-                        res = conn.execute(text(query_str))
-                        if res.returns_rows:
-                            cols = list(res.keys())
-                            raw_rows = res.fetchall()
-                            rows = []
-                            for row in raw_rows:
-                                r_converted = []
-                                for val in row:
-                                    if isinstance(val, (datetime, date)):
-                                        r_converted.append(val.isoformat())
-                                    else:
-                                        r_converted.append(val)
-                                rows.append(r_converted)
-                            payload = {"success": True, "columns": cols, "rows": rows, "row_count": len(rows)}
-                        else:
-                            payload = {"success": True, "columns": [], "rows": [], "row_count": res.rowcount or 0, "message": f"Query executed successfully ({res.rowcount or 0} rows affected)"}
-                    self.send_response(200)
-                    self.send_header("Content-Type", "application/json")
-                    self._set_cors_headers()
-                    self.end_headers()
-                    self.wfile.write(json.dumps(payload).encode("utf-8"))
-                except Exception as q_err:
-                    payload = {"success": False, "error": str(q_err)}
-                    self.send_response(200)
-                    self.send_header("Content-Type", "application/json")
-                    self._set_cors_headers()
-                    self.end_headers()
-                    self.wfile.write(json.dumps(payload).encode("utf-8"))
+                with engine.connect() as conn:
+                    res = conn.execute(text(sql_query))
+                    if res.returns_rows:
+                        cols = list(res.keys())
+                        raw_rows = res.fetchall()
+                        rows = [dict(zip(cols, [str(v) if isinstance(v, (datetime, date)) else v for v in r])) for r in raw_rows]
+                        payload = {"success": True, "columns": cols, "rows": rows}
+                    else:
+                        payload = {"success": True, "message": "Query executed successfully."}
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors_headers()
+                self.end_headers()
+                self.wfile.write(json.dumps(payload).encode("utf-8"))
 
             elif url_path == "/api/db/delete-row":
                 data = json.loads(body)
                 table_name = data.get("table") or "jobs"
                 row_id = int(data.get("id") or 0)
-                valid_tables = {"jobs", "contacts", "interviews", "application_answers", "processed_emails"}
+                valid_tables = {"jobs", "activity_logs", "contacts", "interviews", "application_answers", "processed_emails"}
                 if table_name not in valid_tables or not row_id:
                     self.send_error(400, "Invalid parameters")
                     return
@@ -1614,47 +1774,6 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
                 finally:
                     session.close()
 
-            elif url_path == "/api/jobs/update-status":
-                data = json.loads(body)
-                job_id = int(data.get("job_id", 0))
-                new_status = str(data.get("status") or "Saved")
-
-                settings = get_settings()
-                SessionLocal = init_db(settings.database_path)
-                session = SessionLocal()
-                try:
-                    update_status(session, job_id, new_status, confirm_applied=True)
-                    self.send_response(200)
-                    self.send_header("Content-Type", "application/json")
-                    self._set_cors_headers()
-                    self.end_headers()
-                    self.wfile.write(json.dumps({"status": "success", "job_id": job_id, "new_status": new_status}).encode("utf-8"))
-                finally:
-                    session.close()
-
-            elif url_path == "/api/open-folder":
-                data = json.loads(body)
-                job_id = int(data.get("job_id", 0))
-                settings = get_settings()
-                SessionLocal = init_db(settings.database_path)
-                session = SessionLocal()
-                try:
-                    j = get_job(session, job_id)
-                    if j:
-                        folder = application_folder(settings.jobs_applied_folder, j.company, j.title)
-                        folder.mkdir(parents=True, exist_ok=True)
-                        if sys.platform == "win32":
-                            subprocess.Popen(["explorer", str(folder)])
-                        self.send_response(200)
-                        self.send_header("Content-Type", "application/json")
-                        self._set_cors_headers()
-                        self.end_headers()
-                        self.wfile.write(json.dumps({"status": "success", "folder": str(folder)}).encode("utf-8"))
-                    else:
-                        self.send_error(404, "Job not found")
-                finally:
-                    session.close()
-
             elif url_path == "/api/profile":
                 data = json.loads(body)
                 current_p = load_candidate_profile()
@@ -1671,8 +1790,8 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
                     salary_currency=current_p.salary_currency,
                     employment_types=current_p.employment_types,
                     work_authorization=current_p.work_authorization,
-                    excluded_companies=data.get("excluded_companies", current_p.excluded_companies),
-                    excluded_titles=data.get("excluded_titles", current_p.excluded_titles),
+                    excluded_companies=current_p.excluded_companies,
+                    excluded_titles=current_p.excluded_titles,
                     excluded_skills=current_p.excluded_skills,
                     excluded_locations=current_p.excluded_locations,
                     master_resume_path=current_p.master_resume_path,
@@ -1707,6 +1826,13 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
                         source_platform="browser_capture",
                     )
                     record, match, dupe = record_parsed_job(session, parsed, profile)
+                    log_activity(
+                        session,
+                        event_type="import",
+                        title=f"Captured Job #{record.id} via Chrome Bookmarklet",
+                        description=f"{record.title} at {record.company}",
+                        job_id=record.id,
+                    )
                     response_payload = {
                         "status": "success",
                         "job_id": record.id,
@@ -1721,7 +1847,6 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
                     self._set_cors_headers()
                     self.end_headers()
                     self.wfile.write(json.dumps(response_payload).encode("utf-8"))
-                    logger.info("Browser capture recorded job #%d: %s @ %s", record.id, title, company)
                 finally:
                     session.close()
 
@@ -1744,5 +1869,5 @@ def start_web_dashboard_server(host: str = "127.0.0.1", port: int = 8000) -> HTT
     server = HTTPServer((host, port), WebConsoleRequestHandler)
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    logger.info("Local Web Console and Capture server running on http://%s:%d/", host, port)
+    logger.info("Local Web Console running on http://%s:%d/", host, port)
     return server

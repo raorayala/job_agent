@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from job_agent.database import JobRecord, get_job, list_jobs
+from job_agent.database import JobRecord, get_job, list_jobs, log_activity
 from job_agent.job_normalizer import (
     check_duplicate,
     normalize_company,
@@ -25,6 +25,7 @@ from job_agent.models import (
     ParsedJob,
 )
 from job_agent.notification_service import send_desktop_notification
+from job_agent.resume_tailor import approve_and_finalize_resume, generate_resume_draft
 
 logger = get_logger(__name__)
 
@@ -197,4 +198,141 @@ def mark_applied(
         job.tailored_resume_path = resume_path
         session.commit()
         session.refresh(job)
+    return job
+
+
+def create_resume_draft_for_job(
+    session: Session,
+    job_id: int,
+    profile: CandidateProfile,
+    settings: Any,
+    *,
+    dry_run: bool = False,
+) -> tuple[JobRecord, Path, Path, str]:
+    """
+    Generate a resume draft for a job without overwriting the master or finalized applied resume.
+    If an active draft already exists, returns the existing draft paths.
+    """
+    from pathlib import Path
+    job = get_job(session, job_id)
+    if not job:
+        raise LookupError(f"Job #{job_id} not found")
+
+    parsed = ParsedJob(
+        title=job.title,
+        company=job.company,
+        location=job.location,
+        source_platform=job.source_platform,
+        salary=job.salary,
+        employment_type=job.employment_type,
+        job_url=job.job_url,
+        description=job.description or "",
+    )
+    match = score_job(parsed, profile)
+
+    master_path = Path(profile.get_master_resume_path(job.title) or settings.master_resume_path or "")
+
+    # Prevent duplicate draft generation if active draft exists
+    if job.draft_resume_path and Path(job.draft_resume_path).exists():
+        logger.info("Active resume draft already exists for job #%d: %s", job_id, job.draft_resume_path)
+        draft_p = Path(job.draft_resume_path)
+        summary_p = Path(job.draft_summary_path) if job.draft_summary_path else draft_p
+        return job, draft_p, summary_p, job.diff_summary or "Active draft exists."
+
+    draft_path, summary_path, diff_summary = generate_resume_draft(
+        job=parsed,
+        match=match,
+        master_resume_path=master_path,
+        draft_base_dir=settings.jobs_draft_folder,
+        dry_run=dry_run,
+    )
+
+    if not dry_run:
+        job.draft_resume_path = str(draft_path)
+        job.draft_summary_path = str(summary_path)
+        job.draft_created_at = datetime.now(timezone.utc)
+        job.approval_status = "awaiting_review"
+        job.diff_summary = diff_summary
+        job.status = ApplicationStatus.DRAFT_READY.value
+        session.commit()
+        session.refresh(job)
+
+        log_activity(
+            session,
+            event_type="draft",
+            title=f"Generated Resume Draft for #{job.id}",
+            description=f"Created ATS draft resume at {draft_path}. Awaiting user review.",
+            job_id=job.id,
+        )
+
+    return job, draft_path, summary_path, diff_summary
+
+
+def approve_resume_draft_for_job(
+    session: Session,
+    job_id: int,
+    settings: Any,
+) -> tuple[JobRecord, Path]:
+    """
+    Explicitly approve and promote a resume draft to the finalized jobapplied folder.
+    Updates approval_status='approved' and status='Approved'.
+    """
+    from pathlib import Path
+    job = get_job(session, job_id)
+    if not job:
+        raise LookupError(f"Job #{job_id} not found")
+
+    if not job.draft_resume_path or not Path(job.draft_resume_path).exists():
+        raise FileNotFoundError(f"No active draft found for job #{job_id}. Generate a draft first.")
+
+    parsed = ParsedJob(
+        title=job.title,
+        company=job.company,
+        job_url=job.job_url,
+        description=job.description or "",
+    )
+
+    final_path = approve_and_finalize_resume(
+        job=parsed,
+        draft_resume_path=Path(job.draft_resume_path),
+        output_base_dir=settings.jobs_applied_folder,
+    )
+
+    job.final_resume_path = str(final_path)
+    job.tailored_resume_path = str(final_path)
+    job.approval_status = "approved"
+    job.status = ApplicationStatus.APPROVED.value
+    session.commit()
+    session.refresh(job)
+
+    log_activity(
+        session,
+        event_type="approval",
+        title=f"Approved & Finalized Resume for Job #{job.id}",
+        description=f"Promoted draft to {final_path}. Master resume remains unchanged.",
+        job_id=job.id,
+    )
+
+    return job, final_path
+
+
+def reject_resume_draft_for_job(session: Session, job_id: int) -> JobRecord:
+    """Reject a draft resume, reverting status."""
+    job = get_job(session, job_id)
+    if not job:
+        raise LookupError(f"Job #{job_id} not found")
+
+    job.approval_status = "rejected"
+    job.status = ApplicationStatus.SAVED.value
+    session.commit()
+    session.refresh(job)
+
+    log_activity(
+        session,
+        event_type="status_change",
+        title=f"Rejected Resume Draft for Job #{job.id}",
+        description="Draft rejected by user. Reverted status to Saved.",
+        job_id=job.id,
+    )
+
     return job
