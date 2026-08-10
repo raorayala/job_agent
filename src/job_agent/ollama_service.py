@@ -38,7 +38,7 @@ def generate_ollama_completion(prompt: str, settings: Settings | None = None) ->
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
             if resp.status == 200:
-                res_data: dict[str, Any] = json.loads(resp.read().decode("utf-8"))
+                res_data: dict[str, Any] = json.loads(resp.read().decode("utf-8", errors="replace"))
                 response_text = res_data.get("response") or ""
                 return response_text.strip()
     except Exception as exc:

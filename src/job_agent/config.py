@@ -56,7 +56,7 @@ def load_yaml_config(config_path: Path | None = None) -> dict[str, Any]:
     path = config_path or Path(get_env("CONFIG_PATH", str(DEFAULT_CONFIG_PATH)) or DEFAULT_CONFIG_PATH)
     if not path.exists():
         raise FileNotFoundError(f"Config file not found: {path}")
-    with path.open(encoding="utf-8") as handle:
+    with path.open(encoding="utf-8", errors="replace") as handle:
         data = yaml.safe_load(handle) or {}
     if not isinstance(data, dict):
         raise ValueError(f"Config root must be a mapping: {path}")

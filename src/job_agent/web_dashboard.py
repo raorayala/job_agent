@@ -311,10 +311,19 @@ def execute_cli_command(cmd_name: str, raw_args: list[str]) -> dict[str, Any]:
     """Execute python -m job_agent <cmd_name> <args> in a subprocess and return output."""
     env = dict(os.environ)
     env["PYTHONUTF8"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
 
     cmd = [sys.executable, "-m", "job_agent", cmd_name] + raw_args
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120, env=env)
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=120,
+            env=env,
+        )
         stdout = proc.stdout or ""
         stderr = proc.stderr or ""
         output = (stdout + ("\n" + stderr if stderr else "")).strip()
@@ -1342,7 +1351,7 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         url_path = urllib.parse.urlparse(self.path).path
         content_length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(content_length).decode("utf-8") if content_length > 0 else "{}"
+        body = self.rfile.read(content_length).decode("utf-8", errors="replace") if content_length > 0 else "{}"
 
         try:
             if url_path == "/api/run-command":
