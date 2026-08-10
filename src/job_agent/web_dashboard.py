@@ -314,6 +314,14 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
             font-size: 0.85rem;
             padding: 0.35em 0.65em;
         }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .spin {
+            display: inline-block;
+            animation: spin 1s infinite linear;
+        }
     </style>
 </head>
 <body>
@@ -329,6 +337,17 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
         <button class="btn btn-sm btn-primary" onclick="loadAllData()"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
     </div>
 </header>
+
+<!-- Global Event Progress Bar Container -->
+<div id="global-progress-wrapper" class="bg-white border-bottom shadow-sm px-4 py-2" style="display: none; transition: all 0.3s ease;">
+    <div class="d-flex justify-content-between align-items-center mb-1">
+        <span class="fw-semibold text-dark fs-7" id="global-progress-status"><i class="bi bi-arrow-repeat spin text-primary me-1"></i> Processing event...</span>
+        <span class="fw-bold text-primary fs-7" id="global-progress-percent">0%</span>
+    </div>
+    <div class="progress" style="height: 10px; border-radius: 6px; background-color: #e2e8f0;">
+        <div id="global-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" role="progressbar" style="width: 0%; transition: width 0.2s ease;"></div>
+    </div>
+</div>
 
 <div class="container-fluid px-4 py-3">
     <!-- Navigation Tabs -->
@@ -747,9 +766,66 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
 <script>
     let metadataCommands = [];
     let currentReviewJobId = null;
+    let progressInterval = null;
 
     const KANBAN_STATUSES = ["Imported", "Analyzed", "Resume draft ready", "Awaiting review", "Approved", "Applied", "Interviewing", "Offer", "Rejected"];
     const TOP_10 = ["indeed", "linkedin", "glassdoor", "monster", "ziprecruiter", "careerbuilder", "simplyhired", "dice", "wellfound", "google_jobs"];
+
+    function showProgress(statusText, initialPercent = 15, colorClass = 'bg-primary') {
+        const wrapper = document.getElementById('global-progress-wrapper');
+        const statusEl = document.getElementById('global-progress-status');
+        const percentEl = document.getElementById('global-progress-percent');
+        const barEl = document.getElementById('global-progress-bar');
+
+        if (progressInterval) clearInterval(progressInterval);
+
+        wrapper.style.display = 'block';
+        statusEl.innerHTML = `<i class="bi bi-arrow-repeat spin text-primary me-1"></i> ${statusText}`;
+        percentEl.innerText = `${Math.round(initialPercent)}%`;
+        barEl.style.width = `${initialPercent}%`;
+        barEl.className = `progress-bar progress-bar-striped progress-bar-animated ${colorClass}`;
+
+        let current = initialPercent;
+        progressInterval = setInterval(() => {
+            if (current < 92) {
+                current += (92 - current) * 0.10 + 0.5;
+                percentEl.innerText = `${Math.round(current)}%`;
+                barEl.style.width = `${current}%`;
+            }
+        }, 200);
+    }
+
+    function updateProgressStep(statusText, percent) {
+        const statusEl = document.getElementById('global-progress-status');
+        const percentEl = document.getElementById('global-progress-percent');
+        const barEl = document.getElementById('global-progress-bar');
+
+        if (statusText) statusEl.innerHTML = `<i class="bi bi-arrow-repeat spin text-primary me-1"></i> ${statusText}`;
+        if (percent !== undefined) {
+            percentEl.innerText = `${Math.round(percent)}%`;
+            barEl.style.width = `${percent}%`;
+        }
+    }
+
+    function finishProgress(statusText = 'Completed!', isSuccess = true, autoHideMs = 2200) {
+        if (progressInterval) clearInterval(progressInterval);
+
+        const wrapper = document.getElementById('global-progress-wrapper');
+        const statusEl = document.getElementById('global-progress-status');
+        const percentEl = document.getElementById('global-progress-percent');
+        const barEl = document.getElementById('global-progress-bar');
+
+        const icon = isSuccess ? '<i class="bi bi-check-circle-fill text-success me-1"></i>' : '<i class="bi bi-exclamation-triangle-fill text-danger me-1"></i>';
+        statusEl.innerHTML = `${icon} ${statusText}`;
+        percentEl.innerText = isSuccess ? '100%' : 'Failed';
+        barEl.style.width = '100%';
+        barEl.className = `progress-bar ${isSuccess ? 'bg-success' : 'bg-danger'}`;
+
+        setTimeout(() => {
+            wrapper.style.display = 'none';
+            barEl.style.width = '0%';
+        }, autoHideMs);
+    }
 
     document.addEventListener("DOMContentLoaded", function() {
         renderTop10PlatformsGrid();
@@ -773,9 +849,10 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
     }
 
     function loadAllData() {
-        fetchStats();
-        fetchJobs();
-        fetchActivityFeed();
+        showProgress('Refreshing dashboard statistics, job list, and activity feed...', 20);
+        Promise.all([fetchStats(), fetchJobs(), fetchActivityFeed()])
+            .then(() => finishProgress('Dashboard refreshed successfully', true, 1200))
+            .catch(() => finishProgress('Refresh complete', true, 1200));
     }
 
     function switchTab(tabId) {
@@ -950,6 +1027,7 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
     }
 
     function createDraftForJob(jobId) {
+        showProgress(`Generating ATS Tailored Resume Draft for Job #${jobId}...`, 15);
         fetch('/api/draft/create', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -957,11 +1035,15 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
         })
         .then(res => res.json())
         .then(data => {
+            finishProgress('Resume Draft Created Successfully!', true);
             alert('✅ Resume Draft Created! Opening Review screen...');
             selectForReview(jobId);
             loadAllData();
         })
-        .catch(err => alert('❌ Failed creating resume draft: ' + err));
+        .catch(err => {
+            finishProgress('Failed creating resume draft', false);
+            alert('❌ Failed creating resume draft: ' + err);
+        });
     }
 
     function generateDraftForSelectedJob() {
@@ -976,6 +1058,7 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
 
     function executeApproveDraft() {
         if (!currentReviewJobId) return;
+        showProgress(`Approving & Finalizing Resume for Job #${currentReviewJobId}...`, 20);
         fetch('/api/draft/approve', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -984,16 +1067,21 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
         .then(res => res.json())
         .then(data => {
             bootstrap.Modal.getInstance(document.getElementById('approveDraftModal'))?.hide();
+            finishProgress('Resume Approved & Promoted to Jobs Applied folder!', true);
             alert('✅ Resume Approved & Finalized! Saved to jobapplied folder:\n\n' + data.final_resume_path);
             loadJobForReview(currentReviewJobId);
             loadAllData();
         })
-        .catch(err => alert('❌ Failed approving draft: ' + err));
+        .catch(err => {
+            finishProgress('Failed approving draft', false);
+            alert('❌ Failed approving draft: ' + err);
+        });
     }
 
     function rejectDraftForSelectedJob() {
         if (!currentReviewJobId) return;
         if (!confirm('Reject draft and revert job status?')) return;
+        showProgress(`Rejecting Draft for Job #${currentReviewJobId}...`, 25);
         fetch('/api/draft/reject', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -1001,17 +1089,22 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
         })
         .then(res => res.json())
         .then(data => {
+            finishProgress('Draft Rejected', true);
             alert('Draft rejected.');
             loadJobForReview(currentReviewJobId);
             loadAllData();
         })
-        .catch(err => alert('❌ Failed rejecting draft: ' + err));
+        .catch(err => {
+            finishProgress('Failed rejecting draft', false);
+            alert('❌ Failed rejecting draft: ' + err);
+        });
     }
 
     function runTop10JobSearch() {
         const btn = document.getElementById('btn-find-jobs-now');
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Searching Top 10 Platforms...';
+        showProgress('Searching across top 10 USA job platforms (<10 jobs, <1-2 weeks old)...', 10);
 
         fetch('/api/jobs/find', {
             method: 'POST',
@@ -1022,12 +1115,14 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
         .then(data => {
             btn.disabled = false;
             btn.innerHTML = '<i class="bi bi-search"></i> Find Jobs Now';
+            finishProgress(`Search complete! Discovered ${data.jobs_recorded} jobs across platforms.`, true);
             alert(`✅ Platform Search Complete!\n\nDiscovered ${data.jobs_recorded} jobs across platforms.`);
             loadAllData();
         })
         .catch(err => {
             btn.disabled = false;
             btn.innerHTML = '<i class="bi bi-search"></i> Find Jobs Now';
+            finishProgress('Search encountered an error', false);
             alert('Search encountered an error: ' + err);
         });
     }
@@ -1041,6 +1136,8 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
         const url = document.getElementById('import-url-input').value;
         if (!url) return;
 
+        showProgress('Extracting job listing details from URL...', 20);
+
         fetch('/api/jobs/import-url', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -1049,13 +1146,18 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
         .then(res => res.json())
         .then(data => {
             bootstrap.Modal.getInstance(document.getElementById('importUrlModal'))?.hide();
+            finishProgress(`Job Imported! ID: #${data.job_id} (${data.company})`, true);
             alert(`✅ Job Imported Successfully!\n\nID: #${data.job_id}\nTitle: ${data.title}\nCompany: ${data.company}\nMatch Score: ${data.score}/100`);
             loadAllData();
         })
-        .catch(err => alert('❌ Failed importing job from URL: ' + err));
+        .catch(err => {
+            finishProgress('Failed importing job from URL', false);
+            alert('❌ Failed importing job from URL: ' + err);
+        });
     }
 
     function moveJobStatus(jobId, newStatus) {
+        showProgress(`Updating Job #${jobId} status to '${newStatus}'...`, 30);
         fetch('/api/jobs/update-status', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -1063,9 +1165,15 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
         })
         .then(res => res.json())
         .then(data => {
-            if (data.status === 'success') loadAllData();
+            if (data.status === 'success') {
+                finishProgress(`Status updated to '${newStatus}'`, true);
+                loadAllData();
+            }
         })
-        .catch(err => alert('❌ Failed updating status: ' + err));
+        .catch(err => {
+            finishProgress('Failed updating status', false);
+            alert('❌ Failed updating status: ' + err);
+        });
     }
 
     function loadDbExplorer() {
@@ -1074,12 +1182,14 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
     }
 
     function loadTableData(tableName) {
+        showProgress(`Loading '${tableName}' table records...`, 25);
         fetch(`/api/db/table-data?table=${tableName}`)
             .then(res => res.json())
             .then(data => {
                 const tableEl = document.getElementById('db-browser-table');
                 if (!data.rows || data.rows.length === 0) {
                     tableEl.innerHTML = '<thead><tr><th>Table Empty</th></tr></thead><tbody><tr><td class="text-center py-3 text-muted">No records in this table.</td></tr></tbody>';
+                    finishProgress(`Table '${tableName}' loaded (0 records)`, true);
                     return;
                 }
                 const cols = data.columns || [];
@@ -1097,11 +1207,14 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
                     tbody += tr;
                 });
                 tableEl.innerHTML = `<thead class="table-light">${thead}</thead><tbody>${tbody}</tbody>`;
-            });
+                finishProgress(`Loaded ${data.rows.length} rows from '${tableName}'`, true);
+            })
+            .catch(err => finishProgress('Failed loading table data', false));
     }
 
     function deleteDbRow(tableName, rowId) {
         if (!confirm(`Delete row #${rowId} from ${tableName}?`)) return;
+        showProgress(`Deleting row #${rowId} from '${tableName}'...`, 30);
         fetch('/api/db/delete-row', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -1109,15 +1222,20 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
         })
         .then(res => res.json())
         .then(data => {
+            finishProgress(`Row #${rowId} deleted`, true);
             alert(data.message);
             loadTableData(tableName);
             loadAllData();
         })
-        .catch(err => alert('❌ Failed deleting row: ' + err));
+        .catch(err => {
+            finishProgress('Failed deleting row', false);
+            alert('❌ Failed deleting row: ' + err);
+        });
     }
 
     function triggerQuickCleanup(action) {
         if (action === 'all' && !confirm('⚠️ Are you sure you want to PURGE ALL database records? This resets your local database completely.')) return;
+        showProgress(`Executing cleanup action '${action}'...`, 20);
         fetch('/api/db/cleanup', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -1125,11 +1243,15 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
         })
         .then(res => res.json())
         .then(data => {
+            finishProgress('Database cleanup complete', true);
             alert('✅ Cleanup complete: ' + data.message);
             loadAllData();
             loadDbExplorer();
         })
-        .catch(err => alert('❌ Failed running cleanup: ' + err));
+        .catch(err => {
+            finishProgress('Cleanup failed', false);
+            alert('❌ Failed running cleanup: ' + err);
+        });
     }
 
     function fetchProfile() {
@@ -1147,6 +1269,7 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
 
     function saveProfileForm(e) {
         e.preventDefault();
+        showProgress('Saving Candidate Profile to config.yaml...', 25);
         const payload = {
             target_titles: document.getElementById('prof-titles').value.split(',').map(s => s.trim()).filter(Boolean),
             years_experience: parseInt(document.getElementById('prof-exp').value || 0),
@@ -1163,8 +1286,13 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
         })
         .then(res => res.json())
         .then(data => {
+            finishProgress('Candidate Profile Saved to config.yaml!', true);
             alert('✅ Profile saved to config.yaml!');
             loadAllData();
+        })
+        .catch(err => {
+            finishProgress('Failed saving profile', false);
+            alert('❌ Failed saving profile: ' + err);
         });
     }
 
@@ -1287,6 +1415,7 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
     function executeCommandOnServer(cmd, args) {
         const term = document.getElementById('terminal-output');
         term.innerText = `[Executing] python -m job_agent ${cmd} ${(args || []).join(' ')}...\n\nRunning... Please wait.`;
+        showProgress(`Executing CLI command 'python -m job_agent ${cmd}'...`, 15);
 
         fetch('/api/run-command', {
             method: 'POST',
@@ -1296,10 +1425,12 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
         .then(res => res.json())
         .then(data => {
             term.innerText = `$ ${data.command}\n\n${data.output}`;
+            finishProgress(`CLI command '${cmd}' executed successfully (exit code ${data.exit_code})`, data.success);
             loadAllData();
         })
         .catch(err => {
             term.innerText = `Error executing command: ${err}`;
+            finishProgress(`CLI command '${cmd}' failed`, false);
         });
     }
 
