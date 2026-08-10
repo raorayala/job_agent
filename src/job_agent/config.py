@@ -29,6 +29,11 @@ class Settings:
     gmail_token_path: Path
     gmail_search_query: str
     gmail_label: str | None
+    imap_host: str
+    imap_port: int
+    imap_username: str
+    imap_password: str
+    imap_folder: str
     min_match_score: float
     llm_provider: str
     ollama_base_url: str
@@ -252,6 +257,11 @@ def get_settings(project_root: Path | None = None) -> Settings:
         )
         or "",
         gmail_label=label,
+        imap_host=get_env("IMAP_HOST", "outlook.office365.com") or "outlook.office365.com",
+        imap_port=int(get_env("IMAP_PORT", "993") or "993"),
+        imap_username=get_env("IMAP_USERNAME", "") or "",
+        imap_password=get_env("IMAP_PASSWORD", "") or "",
+        imap_folder=get_env("IMAP_FOLDER", "INBOX") or "INBOX",
         min_match_score=float(get_env("MIN_MATCH_SCORE", "65") or "65"),
         llm_provider=(get_env("LLM_PROVIDER", "none") or "none").lower(),
         ollama_base_url=get_env("OLLAMA_BASE_URL", "http://localhost:11434") or "http://localhost:11434",

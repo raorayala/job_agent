@@ -39,6 +39,7 @@ from job_agent.config import get_settings, get_web_console_settings, load_candid
 from job_agent.database import ActivityLogRecord, JobRecord, create_db_engine, get_job, init_db, list_jobs, log_activity
 from job_agent.demo_data import seed_demo_jobs
 from job_agent.document_exporter import application_folder
+from job_agent.email_sync_service import email_provider_status, sync_email_alerts
 from job_agent.gmail_client import sync_job_emails
 from job_agent.job_analysis import reanalyze_all_jobs
 from job_agent.linkedin_optimize import optimize_linkedin_profile
@@ -122,6 +123,17 @@ CLI_COMMANDS_METADATA = [
                 "cmd": "sync-gmail",
                 "description": "Sync job alert emails from Gmail via read-only OAuth 2.0.",
                 "params": [
+                    {"name": "max_results", "flag": "--max-results", "type": "number", "default": 25, "label": "Max emails to fetch"},
+                    {"name": "dry_run", "flag": "--dry-run", "type": "bool", "default": False, "label": "Dry Run mode"}
+                ]
+            },
+            {
+                "id": "sync-email",
+                "name": "sync-email",
+                "cmd": "sync-email",
+                "description": "Sync job alerts from Gmail or Hotmail/Outlook IMAP (--provider gmail|outlook|hotmail).",
+                "params": [
+                    {"name": "provider", "flag": "--provider", "type": "text", "default": "gmail", "label": "Provider (gmail/outlook/hotmail)"},
                     {"name": "max_results", "flag": "--max-results", "type": "number", "default": 25, "label": "Max emails to fetch"},
                     {"name": "dry_run", "flag": "--dry-run", "type": "bool", "default": False, "label": "Dry Run mode"}
                 ]
@@ -797,15 +809,39 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
                 </div>
             </div>
 
-            <!-- Primary Action Bar -->
-            <div class="card border-0 shadow-sm mb-4">
-                <div class="card-body d-flex flex-wrap gap-2 align-items-center justify-content-between py-3">
-                    <span class="fw-bold"><i class="bi bi-lightning-charge-fill text-warning"></i> Primary Actions:</span>
-                    <div class="d-flex gap-2">
-                        <button class="btn btn-primary" onclick="goFindJobsNow()"><i class="bi bi-search"></i> Job Discovery (Select Platforms)</button>
-                        <button class="btn btn-outline-primary" onclick="triggerQuickCommand('sync-gmail', [])"><i class="bi bi-envelope-at"></i> Sync Gmail Alerts</button>
-                        <button class="btn btn-outline-success" onclick="openImportUrlModal()"><i class="bi bi-link-45deg"></i> Import Job URL</button>
-                        <button class="btn btn-warning text-dark" onclick="switchTab('review-tab')"><i class="bi bi-file-earmark-check"></i> Review Resume Drafts</button>
+            <!-- Primary Actions (Web Tasks Dashboard) -->
+            <div class="card border-0 shadow-sm mb-4" id="primary-actions-card">
+                <div class="card-header bg-white fw-bold py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <span><i class="bi bi-lightning-charge-fill text-warning"></i> Primary Actions</span>
+                    <span class="badge bg-primary-subtle text-primary">Web Tasks · Dashboard</span>
+                </div>
+                <div class="card-body">
+                    <p class="small text-muted mb-3 mb-md-4">Start here for the daily workflow: discover on platforms, sync inbox alerts (Gmail or Hotmail/Outlook), import a job URL, then review ATS resume drafts.</p>
+                    <div class="row g-3">
+                        <div class="col-md-6 col-xl-3">
+                            <button type="button" class="btn btn-primary w-100 h-100 text-start p-3" onclick="goFindJobsNow()">
+                                <div class="fw-bold mb-1"><i class="bi bi-search me-1"></i> Job Discovery</div>
+                                <div class="small opacity-75">Choose platforms &amp; find jobs</div>
+                            </button>
+                        </div>
+                        <div class="col-md-6 col-xl-3">
+                            <button type="button" class="btn btn-outline-primary w-100 h-100 text-start p-3" onclick="openEmailSyncModal()">
+                                <div class="fw-bold mb-1"><i class="bi bi-envelope-at me-1"></i> Sync Email Alerts</div>
+                                <div class="small text-muted">Gmail + Hotmail / Outlook</div>
+                            </button>
+                        </div>
+                        <div class="col-md-6 col-xl-3">
+                            <button type="button" class="btn btn-outline-success w-100 h-100 text-start p-3" onclick="openImportUrlModal()">
+                                <div class="fw-bold mb-1"><i class="bi bi-link-45deg me-1"></i> Import Job URL</div>
+                                <div class="small text-muted">Paste a listing link</div>
+                            </button>
+                        </div>
+                        <div class="col-md-6 col-xl-3">
+                            <button type="button" class="btn btn-warning text-dark w-100 h-100 text-start p-3" onclick="navigateTo('review-tab')">
+                                <div class="fw-bold mb-1"><i class="bi bi-file-earmark-check me-1"></i> Review Resume Drafts</div>
+                                <div class="small">Approve ATS-optimized drafts</div>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1168,7 +1204,7 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
                         <div class="card-header bg-white fw-bold">Common CLS Tasks</div>
                         <div class="card-body" id="cls-task-cards">
                             <div class="d-grid gap-2">
-                                <button class="btn btn-outline-primary text-start" onclick="runClsTask('sync-gmail', [])"><i class="bi bi-envelope-at"></i> Sync Gmail Alerts</button>
+                                <button class="btn btn-outline-primary text-start" onclick="openEmailSyncModal()"><i class="bi bi-envelope-at"></i> Sync Email Alerts (Gmail / Hotmail)</button>
                                 <button class="btn btn-outline-primary text-start" onclick="runClsTask('analyze', [])"><i class="bi bi-cpu"></i> Re-Score All Jobs</button>
                                 <button class="btn btn-outline-primary text-start" onclick="runClsTask('jobs', [])"><i class="bi bi-list-ul"></i> List Tracked Jobs</button>
                                 <button class="btn btn-outline-primary text-start" onclick="runClsTask('report', [])"><i class="bi bi-graph-up"></i> Pipeline Report</button>
@@ -1514,6 +1550,38 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
 </main>
 </div><!-- /.app-layout -->
 </div><!-- /#app-shell -->
+
+<!-- EMAIL SYNC MODAL (Gmail + Hotmail/Outlook) -->
+<div class="modal fade" id="emailSyncModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-light">
+                <h5 class="modal-title fw-bold"><i class="bi bi-envelope-at"></i> Sync Email Alerts</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-3">Import job alerts from Gmail (OAuth) or Hotmail/Outlook (IMAP). Platform discovery stays separate under <strong>Job Discovery</strong>.</p>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Email provider</label>
+                    <select class="form-select" id="email-sync-provider">
+                        <option value="gmail">Gmail</option>
+                        <option value="outlook">Hotmail / Outlook</option>
+                    </select>
+                    <div class="form-text" id="email-sync-provider-hint">Uses Gmail OAuth (credentials.json / token.json).</div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Max emails to scan</label>
+                    <input type="number" class="form-control" id="email-sync-max" value="25" min="1" max="100">
+                </div>
+                <div class="small text-muted" id="email-sync-status-box">Checking provider configuration...</div>
+            </div>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="runEmailSync()"><i class="bi bi-arrow-repeat"></i> Sync Now</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- IMPORT URL MODAL -->
 <div class="modal fade" id="importUrlModal" tabindex="-1" aria-hidden="true">
@@ -1886,7 +1954,66 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
     });
 
     function goFindJobsNow() {
-        switchTab('discovery-tab');
+        navigateTo('discovery-tab');
+    }
+
+    function openEmailSyncModal() {
+        const modal = new bootstrap.Modal(document.getElementById('emailSyncModal'));
+        const providerSel = document.getElementById('email-sync-provider');
+        if (providerSel && !providerSel._bound) {
+            providerSel.addEventListener('change', refreshEmailSyncHints);
+            providerSel._bound = true;
+        }
+        refreshEmailSyncHints();
+        fetch('/api/email/providers')
+            .then(res => res.json())
+            .then(data => {
+                const box = document.getElementById('email-sync-status-box');
+                if (!box) return;
+                const g = data.gmail || {};
+                const o = data.outlook || {};
+                box.innerHTML = `
+                    <div><strong>Gmail:</strong> ${g.configured ? '<span class="text-success">ready</span>' : '<span class="text-warning">not configured</span>'} — ${escapeHtml(g.message || '')}</div>
+                    <div class="mt-1"><strong>Hotmail/Outlook:</strong> ${o.configured ? '<span class="text-success">ready</span>' : '<span class="text-warning">not configured</span>'} — ${escapeHtml(o.message || '')}</div>
+                `;
+            })
+            .catch(() => {});
+        modal.show();
+    }
+
+    function refreshEmailSyncHints() {
+        const provider = document.getElementById('email-sync-provider')?.value || 'gmail';
+        const hint = document.getElementById('email-sync-provider-hint');
+        if (!hint) return;
+        hint.textContent = provider === 'outlook'
+            ? 'Uses IMAP (IMAP_USERNAME / IMAP_PASSWORD app password in .env). Host defaults to outlook.office365.com.'
+            : 'Uses Gmail OAuth (credentials.json / token.json).';
+    }
+
+    function runEmailSync() {
+        const provider = document.getElementById('email-sync-provider')?.value || 'gmail';
+        const maxResults = parseInt(document.getElementById('email-sync-max')?.value || '25', 10);
+        showProgress(`Syncing ${provider === 'outlook' ? 'Hotmail/Outlook' : 'Gmail'} job alerts...`, 18);
+        fetch('/api/email/sync', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ provider, max_results: maxResults, dry_run: false })
+        })
+        .then(async res => {
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Email sync failed');
+            return data;
+        })
+        .then(data => {
+            bootstrap.Modal.getInstance(document.getElementById('emailSyncModal'))?.hide();
+            finishProgress(`Imported ${data.new_jobs || 0} new jobs from ${data.provider || provider}`, true);
+            alert(`✅ Email sync complete\\nProvider: ${data.provider}\\nFetched: ${data.emails_fetched}\\nNew jobs: ${data.new_jobs}\\nDuplicates skipped: ${data.duplicates_skipped}`);
+            loadAllData();
+        })
+        .catch(err => {
+            finishProgress('Email sync failed', false);
+            alert('❌ ' + err.message);
+        });
     }
 
     function formatPlatformLabel(platformKey) {
@@ -3547,6 +3674,15 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
                 finally:
                     session.close()
 
+            elif url_path == "/api/email/providers":
+                settings = get_settings()
+                payload = email_provider_status(settings)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors_headers()
+                self.end_headers()
+                self.wfile.write(json.dumps(payload).encode("utf-8"))
+
             elif url_path == "/api/db/tables":
                 payload = {"tables": ["jobs", "activity_logs", "contacts", "interviews", "application_answers", "processed_emails"]}
                 self.send_response(200)
@@ -4032,6 +4168,33 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
                 self._set_cors_headers()
                 self.end_headers()
                 self.wfile.write(json.dumps(payload).encode("utf-8"))
+
+            elif url_path == "/api/email/sync":
+                data = json.loads(body) if body else {}
+                provider = str(data.get("provider") or "gmail")
+                max_results = int(data.get("max_results") or 25)
+                dry_run = bool(data.get("dry_run", False))
+                settings = get_settings()
+                SessionLocal = init_db(settings.database_path)
+                try:
+                    summary = sync_email_alerts(
+                        settings,
+                        SessionLocal,
+                        provider=provider,
+                        max_results=max_results,
+                        dry_run=dry_run,
+                    )
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self._set_cors_headers()
+                    self.end_headers()
+                    self.wfile.write(json.dumps(summary).encode("utf-8"))
+                except Exception as exc:
+                    self.send_response(400)
+                    self.send_header("Content-Type", "application/json")
+                    self._set_cors_headers()
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": str(exc)}).encode("utf-8"))
 
             elif url_path == "/api/linkedin/optimize":
                 data = json.loads(body) if body else {}

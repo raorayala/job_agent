@@ -22,7 +22,8 @@ Server uses `ThreadingHTTPServer` so long platform searches do not block stats/r
 | `/api/activities` | Recent activity feed (20 events) |
 | `/api/profile` | Candidate profile JSON |
 | `/api/commands` | CLI command metadata for runner tab |
-| `/api/console-settings` | Web Console mode settings (`default_mode`, `guided_flow_pause_seconds`, `setup_locked`) |
+| `/api/email/providers` | Gmail + Outlook/Hotmail configuration readiness |
+| `/api/email/sync` | POST `{ "provider": "gmail\|outlook\|hotmail", "max_results?", "dry_run?" }` sync job-alert emails |
 | `/api/draft/get?job_id=` | Draft paths, approval status, diff summary, optional `optimize` bundle |
 | `/api/db/tables` | Database table list |
 | `/api/db/table-data?table=jobs` | Paginated table rows |

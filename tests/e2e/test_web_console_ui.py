@@ -61,6 +61,7 @@ def test_main_navigation_user_web_tasks(page: Page, web_base_url: str) -> None:
     page.goto(web_base_url)
     enter_module(page, "user")
     for tab_id, pane_id in [
+        ("#dashboard-tab", "#dashboard-pane"),
         ("#discovery-tab", "#discovery-pane"),
         ("#review-tab", "#review-pane"),
         ("#auto-apply-tab", "#auto-apply-pane"),
@@ -70,6 +71,18 @@ def test_main_navigation_user_web_tasks(page: Page, web_base_url: str) -> None:
     ]:
         click_tab(page, tab_id)
         expect(page.locator(pane_id)).to_be_visible()
+
+
+def test_dashboard_primary_actions_include_email_sync(page: Page, web_base_url: str) -> None:
+    page.goto(web_base_url)
+    enter_module(page, "user")
+    click_tab(page, "#dashboard-tab")
+    expect(page.locator("#primary-actions-card")).to_be_visible()
+    expect(page.get_by_role("button", name="Job Discovery")).to_be_visible()
+    expect(page.get_by_role("button", name="Sync Email Alerts")).to_be_visible()
+    page.get_by_role("button", name="Sync Email Alerts").click()
+    expect(page.locator("#emailSyncModal")).to_be_visible()
+    expect(page.locator("#email-sync-provider")).to_contain_text("Hotmail")
 
 
 def test_auto_apply_and_linkedin_nav(page: Page, web_base_url: str) -> None:

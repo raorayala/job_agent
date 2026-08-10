@@ -185,6 +185,39 @@ def sync_gmail_cmd(
         console.print(table)
 
 
+@app.command("sync-email")
+def sync_email_cmd(
+    provider: str = typer.Option("gmail", "--provider", help="gmail | outlook | hotmail"),
+    max_results: int = typer.Option(25, help="Max emails to fetch/scan"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="List actions without writing DB"),
+) -> None:
+    """Sync job-alert emails from Gmail or Outlook/Hotmail IMAP."""
+    from job_agent.email_sync_service import sync_email_alerts
+
+    settings, SessionLocal = _init_context()
+    console.print(f"[bold cyan]Syncing job alerts via {provider}...[/bold cyan]")
+    try:
+        summary = sync_email_alerts(
+            settings,
+            SessionLocal,
+            provider=provider,
+            max_results=max_results,
+            dry_run=dry_run,
+        )
+    except Exception as exc:
+        console.print(f"[bold red]Email sync failed:[/bold red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    console.print(
+        f"\n[green]Sync Summary ({summary.get('provider')}):[/green]\n"
+        f"  Emails fetched: {summary['emails_fetched']}\n"
+        f"  Emails processed: {summary['emails_processed']}\n"
+        f"  Previously processed: {summary['emails_skipped_already_processed']}\n"
+        f"  New jobs found: {summary['new_jobs']}\n"
+        f"  Duplicates skipped: {summary['duplicates_skipped']}"
+    )
+
+
 @app.command("analyze")
 def analyze_cmd(
     min_score: Optional[float] = typer.Option(None, "--min-score", help="Only show jobs at/above this score"),
