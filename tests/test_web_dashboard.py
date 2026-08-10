@@ -43,8 +43,13 @@ def test_get_index_html(web_server):
         assert "Top 3 Recommended" in html
         assert 'id="system-health-card"' in html
         assert 'id="user-focus-banner"' in html
-        assert 'id="console-mode-toggle"' in html
+        assert 'id="console-mode-home"' in html
+        assert "Switch Module" in html
         assert 'id="recent-jobs-table"' in html
+        assert "action-tile" in html
+        assert "activity-timeline" in html
+        assert "score-high" in html
+        assert "empty-state" in html
 
 
 def test_get_api_console_settings(web_server):

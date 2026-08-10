@@ -300,19 +300,52 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <style>
         :root {
-            --bg-main: #f8f9fa;
+            --bg-main: #f1f5f9;
+            --surface: #ffffff;
             --card-border: #e2e8f0;
+            --text-primary: #0f172a;
+            --text-muted: #64748b;
             --brand-primary: #2563eb;
+            --brand-primary-soft: #eff6ff;
+            --score-high-bg: #dcfce7; --score-high-fg: #166534;
+            --score-mid-bg: #fef3c7;  --score-mid-fg: #92400e;
+            --score-low-bg: #fee2e2;  --score-low-fg: #991b1b;
+            --score-none-bg: #f1f5f9; --score-none-fg: #64748b;
+            --radius-md: 12px;
+            --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+            --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
         }
         body {
             background-color: var(--bg-main);
-            font-family: system-ui, -apple-system, sans-serif;
+            color: var(--text-primary);
+            font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+            font-size: 0.9375rem;
+            line-height: 1.45;
         }
         .app-header {
             background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
             color: #ffffff;
-            padding: 1.25rem 1.5rem;
+            padding: 1rem 1.35rem;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        .btn-header-secondary {
+            background: rgba(255,255,255,0.12);
+            border: 1px solid rgba(255,255,255,0.35);
+            color: #fff;
+        }
+        .btn-header-secondary:hover {
+            background: rgba(255,255,255,0.22);
+            border-color: rgba(255,255,255,0.5);
+            color: #fff;
+        }
+        .btn-header-tertiary {
+            background: transparent;
+            border: 1px solid transparent;
+            color: #cbd5e1;
+        }
+        .btn-header-tertiary:hover {
+            background: rgba(255,255,255,0.08);
+            color: #fff;
         }
         .nav-tabs .nav-link {
             color: #64748b;
@@ -326,16 +359,84 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
             background: transparent;
         }
         .stat-card {
+            position: relative;
             border: 1px solid var(--card-border);
-            border-radius: 12px;
-            background: #ffffff;
-            padding: 1.25rem;
-            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+            border-radius: var(--radius-md);
+            background: var(--surface);
+            padding: 1rem 1.1rem 1rem 1.15rem;
+            box-shadow: var(--shadow-sm);
+            overflow: hidden;
+            transition: box-shadow 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
+        }
+        .stat-card::before {
+            content: "";
+            position: absolute;
+            left: 0; top: 0; bottom: 0;
+            width: 3px;
+            background: var(--stat-accent, var(--brand-primary));
+        }
+        .stat-card:hover {
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-md);
+            border-color: #cbd5e1;
+        }
+        .stat-card.is-zero { opacity: 0.72; }
+        .stat-card.is-zero .stat-value { color: var(--text-muted) !important; }
+        .stat-card[data-accent="jobs"] { --stat-accent: #2563eb; }
+        .stat-card[data-accent="review"] { --stat-accent: #d97706; }
+        .stat-card[data-accent="drafts"] { --stat-accent: #dc2626; }
+        .stat-card[data-accent="apps"] { --stat-accent: #059669; }
+        .stat-label {
+            font-size: 0.72rem;
+            font-weight: 650;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 0.35rem;
         }
         .stat-value {
-            font-size: 1.85rem;
-            font-weight: 700;
+            font-size: 1.75rem;
+            font-weight: 750;
+            letter-spacing: -0.03em;
+            line-height: 1.1;
         }
+        .action-tile {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.25rem;
+            width: 100%;
+            height: 100%;
+            text-align: left;
+            padding: 1rem 1.05rem;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--card-border);
+            background: var(--surface);
+            box-shadow: var(--shadow-sm);
+            color: var(--text-primary);
+            transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+        }
+        .action-tile:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+            border-color: #93c5fd;
+            color: var(--text-primary);
+        }
+        .action-tile.is-primary {
+            background: linear-gradient(160deg, #2563eb, #1d4ed8);
+            color: #fff;
+            border-color: transparent;
+        }
+        .action-tile.is-primary:hover { color: #fff; border-color: transparent; }
+        .action-tile.is-primary .action-sub { color: rgba(255,255,255,0.78); }
+        .action-tile.is-warning {
+            background: linear-gradient(160deg, #fbbf24, #f59e0b);
+            border-color: transparent;
+            color: #1c1917;
+        }
+        .action-tile.is-warning:hover { color: #1c1917; }
+        .action-tile .action-title { font-weight: 700; font-size: 0.95rem; }
+        .action-tile .action-sub { font-size: 0.8rem; color: var(--text-muted); }
         .kanban-col {
             background: #f1f5f9;
             border-radius: 10px;
@@ -392,8 +493,116 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
             word-break: break-word;
         }
         .badge-score {
-            font-size: 0.85rem;
-            padding: 0.35em 0.65em;
+            font-size: 0.75rem;
+            font-weight: 700;
+            min-width: 2.4rem;
+            padding: 0.35em 0.55em;
+            border-radius: 6px;
+            font-variant-numeric: tabular-nums;
+        }
+        .badge-score.score-high { background: var(--score-high-bg); color: var(--score-high-fg); }
+        .badge-score.score-mid  { background: var(--score-mid-bg);  color: var(--score-mid-fg); }
+        .badge-score.score-low  { background: var(--score-low-bg);  color: var(--score-low-fg); }
+        .badge-score.score-none { background: var(--score-none-bg); color: var(--score-none-fg); }
+        .badge-status {
+            font-size: 0.7rem;
+            font-weight: 650;
+            border-radius: 999px;
+            padding: 0.3em 0.65em;
+        }
+        .badge-status.status-review { background: #ffedd5; color: #9a3412; }
+        .badge-status.status-draft  { background: #ede9fe; color: #5b21b6; }
+        .badge-status.status-applied{ background: #d1fae5; color: #065f46; }
+        .badge-status.status-default{ background: #e2e8f0; color: #334155; }
+        .jobs-table {
+            --bs-table-hover-bg: #f8fafc;
+            font-size: 0.875rem;
+        }
+        .jobs-table thead th {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--text-muted);
+            font-weight: 700;
+            border-bottom-width: 1px;
+            white-space: nowrap;
+            background: #f8fafc !important;
+        }
+        .jobs-table tbody td {
+            padding: 0.65rem 0.85rem;
+            border-color: #eef2f7;
+            vertical-align: middle;
+        }
+        .jobs-table .col-id { width: 4.5rem; }
+        .jobs-table .col-score { width: 4.75rem; text-align: center; }
+        .jobs-table .col-platform { width: 7.5rem; }
+        .jobs-table .col-actions { width: 8.5rem; }
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 2.25rem 1.5rem;
+            gap: 0.35rem;
+        }
+        .empty-state .empty-icon {
+            width: 2.75rem;
+            height: 2.75rem;
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--brand-primary-soft);
+            color: var(--brand-primary);
+            font-size: 1.25rem;
+            margin-bottom: 0.35rem;
+        }
+        .empty-state .empty-title { font-weight: 700; color: var(--text-primary); font-size: 0.95rem; }
+        .empty-state .empty-copy { color: var(--text-muted); font-size: 0.85rem; max-width: 28rem; }
+        .activity-timeline { list-style: none; margin: 0; padding: 0.5rem 0.85rem 0.85rem; }
+        .activity-item {
+            position: relative;
+            padding: 0.65rem 0 0.65rem 1.15rem;
+            border: none;
+            background: transparent;
+        }
+        .activity-item::before {
+            content: "";
+            position: absolute;
+            left: 0.28rem;
+            top: 1.15rem;
+            bottom: -0.15rem;
+            width: 2px;
+            background: #e2e8f0;
+        }
+        .activity-item:last-child::before { display: none; }
+        .activity-item::after {
+            content: "";
+            position: absolute;
+            left: 0.1rem;
+            top: 0.95rem;
+            width: 0.55rem;
+            height: 0.55rem;
+            border-radius: 999px;
+            background: #94a3b8;
+            border: 2px solid #fff;
+            box-shadow: 0 0 0 1px #e2e8f0;
+        }
+        .activity-item.cat-discover::after { background: #2563eb; }
+        .activity-item.cat-sync::after { background: #7c3aed; }
+        .activity-item.cat-draft::after { background: #d97706; }
+        .activity-item.cat-apply::after { background: #059669; }
+        .activity-tag {
+            display: inline-block;
+            font-size: 0.65rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            padding: 0.15em 0.45em;
+            border-radius: 4px;
+            background: #f1f5f9;
+            color: #475569;
         }
         @keyframes spin {
             0% { transform: rotate(0deg); }
@@ -447,7 +656,6 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
         body.module-gate-open #module-gate {
             display: flex !important;
         }
-        /* Cursor-like left sidebar layout */
         #app-shell {
             min-height: 100vh;
             display: flex;
@@ -485,27 +693,38 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
             color: #64748b;
             font-weight: 700;
         }
+        #app-sidebar .sidebar-group {
+            margin: 0.35rem 0.55rem 0.75rem;
+            padding: 0.35rem 0.2rem 0.45rem;
+            border-radius: 10px;
+            background: rgba(15, 23, 42, 0.45);
+            border: 1px solid #1e293b;
+        }
+        #app-sidebar .sidebar-group.is-cls {
+            background: rgba(15, 23, 42, 0.25);
+            border-style: dashed;
+        }
         #app-sidebar .sidebar-group-title {
-            margin: 0.35rem 0.65rem;
-            padding: 0.45rem 0.65rem;
+            margin: 0.15rem 0.45rem 0.35rem;
+            padding: 0.4rem 0.55rem;
             border-radius: 8px;
             color: #e2e8f0;
-            font-size: 0.82rem;
+            font-size: 0.78rem;
             font-weight: 650;
         }
         #app-sidebar .sidebar-nav-btn {
             display: flex;
             align-items: center;
-            gap: 0.55rem;
-            width: calc(100% - 1.3rem);
-            margin: 0.15rem 0.65rem;
-            padding: 0.55rem 0.7rem;
+            gap: 0.5rem;
+            width: calc(100% - 0.9rem);
+            margin: 0.12rem 0.45rem;
+            padding: 0.5rem 0.65rem;
             border: none;
-            border-radius: 8px;
+            border-radius: 7px;
             background: transparent;
             color: #94a3b8;
             text-align: left;
-            font-size: 0.86rem;
+            font-size: 0.84rem;
             font-weight: 500;
             cursor: pointer;
             transition: background 0.15s ease, color 0.15s ease;
@@ -515,8 +734,9 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
             color: #f1f5f9;
         }
         #app-sidebar .sidebar-nav-btn.active {
-            background: #1d4ed8;
-            color: #ffffff;
+            background: rgba(37, 99, 235, 0.28);
+            color: #f8fafc;
+            box-shadow: inset 3px 0 0 #60a5fa;
         }
         #app-sidebar .sidebar-nav-btn .step-num {
             width: 1.25rem;
@@ -533,6 +753,12 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
         }
         #app-sidebar .sidebar-nav-btn.active .step-num {
             background: rgba(255,255,255,0.22);
+        }
+        #app-sidebar .nav-ico {
+            width: 1.1rem;
+            text-align: center;
+            opacity: 0.85;
+            flex-shrink: 0;
         }
         #app-sidebar .sidebar-footer {
             margin-top: auto;
@@ -557,8 +783,9 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
         }
         .page-title-bar h2 {
             margin: 0;
-            font-size: 1.25rem;
+            font-size: 1.35rem;
             font-weight: 700;
+            letter-spacing: -0.02em;
             color: #0f172a;
         }
         @media (max-width: 900px) {
@@ -666,13 +893,13 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
     </div>
     <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
         <span class="badge bg-light text-dark" id="console-mode-badge">User Mode</span>
-        <button type="button" class="btn btn-sm btn-outline-light" id="console-mode-home" onclick="showModuleGate()" title="Return to USER / ADMIN module chooser">
+        <button class="btn btn-sm btn-primary" onclick="loadAllData()"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
+        <button class="btn btn-sm btn-header-secondary user-only" onclick="openImportUrlModal()"><i class="bi bi-link-45deg"></i> Import URL</button>
+        <a href="/capture" class="btn btn-sm btn-header-tertiary user-only" title="Install or re-install the 1-click Chrome bookmarklet"><i class="bi bi-bookmark-star"></i> Bookmarklet</a>
+        <a href="/api/calendar.ics" class="btn btn-sm btn-header-tertiary user-only"><i class="bi bi-calendar-event"></i> Calendar</a>
+        <button type="button" class="btn btn-sm btn-header-tertiary" id="console-mode-home" onclick="showModuleGate()" title="Return to USER / ADMIN module chooser">
             <i class="bi bi-grid-1x2"></i> Switch Module
         </button>
-        <a href="/capture" class="btn btn-sm btn-warning text-dark user-only" title="Install or re-install the 1-click Chrome bookmarklet"><i class="bi bi-bookmark-star-fill"></i> Install Bookmarklet</a>
-        <button class="btn btn-sm btn-outline-light user-only" onclick="openImportUrlModal()"><i class="bi bi-link-45deg"></i> Import URL</button>
-        <a href="/api/calendar.ics" class="btn btn-sm btn-outline-light user-only"><i class="bi bi-calendar-event"></i> .ics Calendar</a>
-        <button class="btn btn-sm btn-primary" onclick="loadAllData()"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
     </div>
 </header>
 
@@ -697,25 +924,30 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
         <!-- USER exclusive navigation -->
         <div class="user-only" id="user-sidebar-nav">
             <div class="sidebar-section-label">User</div>
-            <div class="sidebar-group-title"><i class="bi bi-window-sidebar me-1"></i> Web Tasks</div>
-            <button type="button" class="sidebar-nav-btn active" id="dashboard-tab" data-pane="dashboard-pane" onclick="navigateTo('dashboard-tab')"><span class="step-num">1</span> Dashboard</button>
-            <button type="button" class="sidebar-nav-btn" id="discovery-tab" data-pane="discovery-pane" onclick="navigateTo('discovery-tab')"><span class="step-num">2</span> Discover Jobs</button>
-            <button type="button" class="sidebar-nav-btn" id="review-tab" data-pane="review-pane" onclick="navigateTo('review-tab')"><span class="step-num">3</span> Review &amp; Optimize</button>
-            <button type="button" class="sidebar-nav-btn" id="auto-apply-tab" data-pane="auto-apply-pane" onclick="navigateTo('auto-apply-tab')"><span class="step-num">4</span> Auto Apply</button>
-            <button type="button" class="sidebar-nav-btn" id="linkedin-tab" data-pane="linkedin-pane" onclick="navigateTo('linkedin-tab')"><span class="step-num">5</span> LinkedIn Optimization</button>
-            <button type="button" class="sidebar-nav-btn" id="kanban-tab" data-pane="kanban-pane" onclick="navigateTo('kanban-tab')"><span class="step-num">6</span> Application Board</button>
-
-            <div class="sidebar-group-title mt-2"><i class="bi bi-terminal me-1"></i> CLS Tasks</div>
-            <button type="button" class="sidebar-nav-btn" id="cls-tab" data-pane="cls-pane" onclick="navigateTo('cls-tab')"><span class="step-num">7</span> CLS Command Tasks</button>
+            <div class="sidebar-group">
+                <div class="sidebar-group-title"><i class="bi bi-window-sidebar me-1"></i> Web Tasks</div>
+                <button type="button" class="sidebar-nav-btn active" id="dashboard-tab" data-pane="dashboard-pane" onclick="navigateTo('dashboard-tab')"><span class="step-num">1</span><i class="bi bi-speedometer2 nav-ico"></i> Dashboard</button>
+                <button type="button" class="sidebar-nav-btn" id="discovery-tab" data-pane="discovery-pane" onclick="navigateTo('discovery-tab')"><span class="step-num">2</span><i class="bi bi-compass nav-ico"></i> Discover Jobs</button>
+                <button type="button" class="sidebar-nav-btn" id="review-tab" data-pane="review-pane" onclick="navigateTo('review-tab')"><span class="step-num">3</span><i class="bi bi-file-earmark-check nav-ico"></i> Review &amp; Optimize</button>
+                <button type="button" class="sidebar-nav-btn" id="auto-apply-tab" data-pane="auto-apply-pane" onclick="navigateTo('auto-apply-tab')"><span class="step-num">4</span><i class="bi bi-send-check nav-ico"></i> Auto Apply</button>
+                <button type="button" class="sidebar-nav-btn" id="linkedin-tab" data-pane="linkedin-pane" onclick="navigateTo('linkedin-tab')"><span class="step-num">5</span><i class="bi bi-linkedin nav-ico"></i> LinkedIn Optimization</button>
+                <button type="button" class="sidebar-nav-btn" id="kanban-tab" data-pane="kanban-pane" onclick="navigateTo('kanban-tab')"><span class="step-num">6</span><i class="bi bi-kanban nav-ico"></i> Application Board</button>
+            </div>
+            <div class="sidebar-group is-cls">
+                <div class="sidebar-group-title"><i class="bi bi-terminal me-1"></i> CLS Tasks</div>
+                <button type="button" class="sidebar-nav-btn" id="cls-tab" data-pane="cls-pane" onclick="navigateTo('cls-tab')"><span class="step-num">7</span><i class="bi bi-code-slash nav-ico"></i> CLS Command Tasks</button>
+            </div>
         </div>
 
         <!-- ADMIN exclusive navigation -->
         <div class="admin-only" id="admin-sidebar-nav">
             <div class="sidebar-section-label">Admin</div>
-            <button type="button" class="sidebar-nav-btn" id="admin-home-tab" data-pane="admin-home-pane" onclick="navigateTo('admin-home-tab');"><span class="step-num">1</span> System Health &amp; Setup</button>
-            <button type="button" class="sidebar-nav-btn" id="profile-tab" data-pane="profile-pane" onclick="navigateTo('profile-tab')"><span class="step-num">2</span> Profile &amp; Skills</button>
-            <button type="button" class="sidebar-nav-btn" id="db-tab" data-pane="db-pane" onclick="navigateTo('db-tab'); loadDbExplorer();"><span class="step-num">3</span> Database Explorer</button>
-            <button type="button" class="sidebar-nav-btn" id="cheatsheet-tab" data-pane="cheatsheet-pane" onclick="navigateTo('cheatsheet-tab')"><span class="step-num">4</span> Full CLI Runner</button>
+            <div class="sidebar-group">
+                <button type="button" class="sidebar-nav-btn" id="admin-home-tab" data-pane="admin-home-pane" onclick="navigateTo('admin-home-tab');"><span class="step-num">1</span><i class="bi bi-heart-pulse nav-ico"></i> System Health &amp; Setup</button>
+                <button type="button" class="sidebar-nav-btn" id="profile-tab" data-pane="profile-pane" onclick="navigateTo('profile-tab')"><span class="step-num">2</span><i class="bi bi-person-gear nav-ico"></i> Profile &amp; Skills</button>
+                <button type="button" class="sidebar-nav-btn" id="db-tab" data-pane="db-pane" onclick="navigateTo('db-tab'); loadDbExplorer();"><span class="step-num">3</span><i class="bi bi-database nav-ico"></i> Database Explorer</button>
+                <button type="button" class="sidebar-nav-btn" id="cheatsheet-tab" data-pane="cheatsheet-pane" onclick="navigateTo('cheatsheet-tab')"><span class="step-num">4</span><i class="bi bi-terminal-fill nav-ico"></i> Full CLI Runner</button>
+            </div>
         </div>
 
         <div class="sidebar-footer">
@@ -746,101 +978,111 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
         <div class="tab-pane fade show active user-only" id="dashboard-pane">
             <div class="page-title-bar">
                 <h2><i class="bi bi-speedometer2 text-primary"></i> Dashboard</h2>
-                <span class="badge bg-primary-subtle text-primary">Web Tasks · Step 1</span>
-            </div>
-            <div class="row g-3 mb-4">
-                <div class="col-md-3">
-                    <div class="stat-card">
-                        <div class="text-muted small">New Discovered Jobs</div>
-                        <div class="stat-value text-primary" id="stat-total-jobs">-</div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="stat-card">
-                        <div class="text-muted small">Jobs Requiring Review</div>
-                        <div class="stat-value text-warning" id="stat-review-count">-</div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="stat-card">
-                        <div class="text-muted small">Draft Resumes Awaiting Approval</div>
-                        <div class="stat-value text-danger" id="stat-drafts-count">-</div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="stat-card">
-                        <div class="text-muted small">Applications In Progress</div>
-                        <div class="stat-value text-success" id="stat-applied-count">-</div>
-                    </div>
-                </div>
+                <span class="badge bg-primary-subtle text-primary">Web Tasks</span>
             </div>
 
-            <!-- User focus banner (daily workflow) -->
-            <div class="alert alert-primary border-0 shadow-sm mb-4" id="user-focus-banner">
-                <div class="fw-semibold mb-1"><i class="bi bi-briefcase-fill"></i> Daily job search workspace</div>
-                <div class="small mb-0">Follow the left sidebar under <strong>Web Tasks</strong> (steps 1–4), then use <strong>CLS Tasks</strong> for command-line helpers. Admin tools are only in the Admin module.</div>
-            </div>
-
-            <!-- Compact setup status for users -->
-            <div class="card border-0 shadow-sm mb-4" id="user-setup-status-card">
-                <div class="card-body py-3 d-flex flex-wrap align-items-center justify-content-between gap-2">
-                    <div>
-                        <div class="fw-bold mb-1"><i class="bi bi-check2-circle text-success"></i> Ready to search</div>
-                        <div class="small text-muted mb-0" id="user-setup-summary">Loading setup status...</div>
-                    </div>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="showModuleGate()"><i class="bi bi-grid-1x2"></i> Switch to Admin Module</button>
-                </div>
-            </div>
-
-            <!-- Chrome Bookmarklet Install Card (always available from dashboard) -->
-            <div class="card border-0 shadow-sm mb-4" id="bookmarklet-install-card">
-                <div class="card-body d-flex flex-wrap gap-3 align-items-center justify-content-between py-3">
-                    <div>
-                        <div class="fw-bold mb-1"><i class="bi bi-bookmark-star-fill text-warning"></i> Chrome Bookmarklet</div>
-                        <div class="text-muted small mb-0">
-                            Save jobs from Indeed, LinkedIn, Dice, and other sites with one click while browsing.
-                            <span id="bookmarklet-install-status" class="ms-1"></span>
-                        </div>
-                    </div>
-                    <div class="d-flex gap-2 flex-wrap">
-                        <a href="/capture" class="btn btn-warning text-dark"><i class="bi bi-bookmark-plus"></i> Install Bookmarklet</a>
-                        <button class="btn btn-outline-secondary btn-sm" onclick="clearBookmarkletInstalledFlag()" id="bookmarklet-reset-btn" style="display:none;"><i class="bi bi-arrow-counterclockwise"></i> Reset Install Status</button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Primary Actions (Web Tasks Dashboard) -->
+            <!-- Primary Actions first (actions over metrics) -->
             <div class="card border-0 shadow-sm mb-4" id="primary-actions-card">
                 <div class="card-header bg-white fw-bold py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <span><i class="bi bi-lightning-charge-fill text-warning"></i> Primary Actions</span>
-                    <span class="badge bg-primary-subtle text-primary">Web Tasks · Dashboard</span>
+                    <span class="badge bg-primary-subtle text-primary">Start here</span>
                 </div>
                 <div class="card-body">
-                    <p class="small text-muted mb-3 mb-md-4">Start here for the daily workflow: discover on platforms, sync inbox alerts (Gmail or Hotmail/Outlook), import a job URL, then review ATS resume drafts.</p>
+                    <p class="small text-muted mb-3 mb-md-4">Daily workflow: discover on platforms, sync inbox alerts (Gmail or Hotmail/Outlook), import a job URL, then review ATS resume drafts.</p>
                     <div class="row g-3">
                         <div class="col-md-6 col-xl-3">
-                            <button type="button" class="btn btn-primary w-100 h-100 text-start p-3" onclick="goFindJobsNow()">
-                                <div class="fw-bold mb-1"><i class="bi bi-search me-1"></i> Job Discovery</div>
-                                <div class="small opacity-75">Choose platforms &amp; find jobs</div>
+                            <button type="button" class="action-tile is-primary" onclick="goFindJobsNow()">
+                                <span class="action-title"><i class="bi bi-search me-1"></i> Job Discovery</span>
+                                <span class="action-sub">Choose platforms &amp; find jobs</span>
                             </button>
                         </div>
                         <div class="col-md-6 col-xl-3">
-                            <button type="button" class="btn btn-outline-primary w-100 h-100 text-start p-3" onclick="openEmailSyncModal()">
-                                <div class="fw-bold mb-1"><i class="bi bi-envelope-at me-1"></i> Sync Email Alerts</div>
-                                <div class="small text-muted">Gmail + Hotmail / Outlook</div>
+                            <button type="button" class="action-tile" onclick="openEmailSyncModal()">
+                                <span class="action-title"><i class="bi bi-envelope-at me-1"></i> Sync Email Alerts</span>
+                                <span class="action-sub">Gmail + Hotmail / Outlook</span>
                             </button>
                         </div>
                         <div class="col-md-6 col-xl-3">
-                            <button type="button" class="btn btn-outline-success w-100 h-100 text-start p-3" onclick="openImportUrlModal()">
-                                <div class="fw-bold mb-1"><i class="bi bi-link-45deg me-1"></i> Import Job URL</div>
-                                <div class="small text-muted">Paste a listing link</div>
+                            <button type="button" class="action-tile" onclick="openImportUrlModal()">
+                                <span class="action-title"><i class="bi bi-link-45deg me-1"></i> Import Job URL</span>
+                                <span class="action-sub">Paste a listing link</span>
                             </button>
                         </div>
                         <div class="col-md-6 col-xl-3">
-                            <button type="button" class="btn btn-warning text-dark w-100 h-100 text-start p-3" onclick="navigateTo('review-tab')">
-                                <div class="fw-bold mb-1"><i class="bi bi-file-earmark-check me-1"></i> Review Resume Drafts</div>
-                                <div class="small">Approve ATS-optimized drafts</div>
+                            <button type="button" class="action-tile is-warning" onclick="navigateTo('review-tab')">
+                                <span class="action-title"><i class="bi bi-file-earmark-check me-1"></i> Review Resume Drafts</span>
+                                <span class="action-sub">Approve ATS-optimized drafts</span>
                             </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-3 mb-4">
+                <div class="col-md-3">
+                    <div class="stat-card" data-accent="jobs" id="stat-card-jobs">
+                        <div class="stat-label">Discovered Jobs</div>
+                        <div class="stat-value text-primary" id="stat-total-jobs">0</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-card" data-accent="review" id="stat-card-review">
+                        <div class="stat-label">Requiring Review</div>
+                        <div class="stat-value text-warning" id="stat-review-count">0</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-card" data-accent="drafts" id="stat-card-drafts">
+                        <div class="stat-label">Draft Resumes</div>
+                        <div class="stat-value text-danger" id="stat-drafts-count">0</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-card" data-accent="apps" id="stat-card-apps">
+                        <div class="stat-label">Applications In Progress</div>
+                        <div class="stat-value text-success" id="stat-applied-count">0</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="alert alert-primary border-0 shadow-sm mb-3 py-2" id="user-focus-banner">
+                <div class="small mb-0"><i class="bi bi-briefcase-fill me-1"></i> Daily workspace: use <strong>Primary Actions</strong> above, then follow <strong>Web Tasks</strong> in the sidebar. Expand Getting started for setup tools.</div>
+            </div>
+
+            <!-- Getting started (collapsed by default to reduce first-viewport clutter) -->
+            <div class="accordion mb-4" id="getting-started-accordion">
+                <div class="accordion-item border-0 shadow-sm">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed py-3 fw-semibold" type="button" data-bs-toggle="collapse" data-bs-target="#getting-started-body" aria-expanded="false" aria-controls="getting-started-body">
+                            <i class="bi bi-rocket-takeoff text-primary me-2"></i> Getting started &amp; tools
+                        </button>
+                    </h2>
+                    <div id="getting-started-body" class="accordion-collapse collapse" data-bs-parent="#getting-started-accordion">
+                        <div class="accordion-body">
+                            <div class="card border mb-3" id="user-setup-status-card">
+                                <div class="card-body py-3 d-flex flex-wrap align-items-center justify-content-between gap-2">
+                                    <div>
+                                        <div class="fw-bold mb-1"><i class="bi bi-check2-circle text-success"></i> Ready to search</div>
+                                        <div class="small text-muted mb-0" id="user-setup-summary">Loading setup status...</div>
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="showModuleGate()"><i class="bi bi-grid-1x2"></i> Switch to Admin Module</button>
+                                </div>
+                            </div>
+                            <div class="card border" id="bookmarklet-install-card">
+                                <div class="card-body d-flex flex-wrap gap-3 align-items-center justify-content-between py-3">
+                                    <div>
+                                        <div class="fw-bold mb-1"><i class="bi bi-bookmark-star-fill text-warning"></i> Chrome Bookmarklet</div>
+                                        <div class="text-muted small mb-0">
+                                            Save jobs from Indeed, LinkedIn, Dice, and other sites with one click while browsing.
+                                            <span id="bookmarklet-install-status" class="ms-1"></span>
+                                        </div>
+                                    </div>
+                                    <div class="d-flex gap-2 flex-wrap">
+                                        <a href="/capture" class="btn btn-warning text-dark"><i class="bi bi-bookmark-plus"></i> Install Bookmarklet</a>
+                                        <button class="btn btn-outline-secondary btn-sm" onclick="clearBookmarkletInstalledFlag()" id="bookmarklet-reset-btn" style="display:none;"><i class="bi bi-arrow-counterclockwise"></i> Reset Install Status</button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -855,11 +1097,15 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
                         </div>
                         <div class="card-body p-0">
                             <div class="table-responsive">
-                                <table class="table table-hover align-middle mb-0" id="high-score-table">
-                                    <thead class="table-light">
+                                <table class="table table-hover align-middle mb-0 jobs-table" id="high-score-table">
+                                    <colgroup>
+                                        <col class="col-id"><col class="col-score"><col>
+                                        <col><col class="col-platform"><col class="col-actions">
+                                    </colgroup>
+                                    <thead>
                                         <tr>
                                             <th>ID</th>
-                                            <th>Score</th>
+                                            <th class="text-center">Score</th>
                                             <th>Job Title</th>
                                             <th>Company</th>
                                             <th>Platform</th>
@@ -881,11 +1127,15 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
                         </div>
                         <div class="card-body p-0">
                             <div class="table-responsive">
-                                <table class="table table-hover align-middle mb-0" id="recent-jobs-table">
-                                    <thead class="table-light">
+                                <table class="table table-hover align-middle mb-0 jobs-table" id="recent-jobs-table">
+                                    <colgroup>
+                                        <col class="col-id"><col class="col-score"><col>
+                                        <col><col class="col-platform"><col class="col-actions">
+                                    </colgroup>
+                                    <thead>
                                         <tr>
                                             <th>ID</th>
-                                            <th>Score</th>
+                                            <th class="text-center">Score</th>
                                             <th>Title</th>
                                             <th>Company</th>
                                             <th>Platform</th>
@@ -902,14 +1152,13 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
                 </div>
 
                 <div class="col-md-4">
-                    <!-- Activity Feed Card -->
                     <div class="card border-0 shadow-sm mb-4">
                         <div class="card-header bg-white fw-bold py-3">
-                            <i class="bi bi-activity text-primary"></i> Recent Activity Feed
+                            <i class="bi bi-activity text-primary"></i> Recent Activity
                         </div>
-                        <div class="card-body p-0" style="max-height: 380px; overflow-y: auto;">
-                            <ul class="list-group list-group-flush fs-8" id="activity-feed-list">
-                                <li class="list-group-item text-muted text-center py-3">Loading recent events...</li>
+                        <div class="card-body p-0" style="max-height: 420px; overflow-y: auto;">
+                            <ul class="activity-timeline" id="activity-feed-list">
+                                <li class="text-muted text-center py-3">Loading recent events...</li>
                             </ul>
                         </div>
                     </div>
@@ -976,12 +1225,12 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
-                        <table class="table table-hover align-middle mb-0" id="all-jobs-table">
-                            <thead class="table-light">
+                        <table class="table table-hover align-middle mb-0 jobs-table" id="all-jobs-table">
+                            <thead>
                                 <tr>
                                     <th>ID</th>
                                     <th>Status</th>
-                                    <th>Score</th>
+                                    <th class="text-center">Score</th>
                                     <th>Title</th>
                                     <th>Company</th>
                                     <th>Platform</th>
@@ -2085,6 +2334,64 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
             .finally(() => clearTimeout(timer));
     }
 
+    function setStat(valueId, cardId, value) {
+        const n = Number(value) || 0;
+        const el = document.getElementById(valueId);
+        if (el) el.innerText = n;
+        const card = document.getElementById(cardId);
+        if (card) card.classList.toggle('is-zero', n === 0);
+    }
+
+    function scoreBadge(score) {
+        if (score == null || score === '' || Number.isNaN(Number(score))) {
+            return '<span class="badge badge-score score-none">—</span>';
+        }
+        const n = Math.round(Number(score));
+        const tier = n >= 80 ? 'score-high' : n >= 65 ? 'score-mid' : 'score-low';
+        return `<span class="badge badge-score ${tier}">${n}</span>`;
+    }
+
+    function statusBadge(status) {
+        const s = (status || '').toLowerCase();
+        let cls = 'status-default';
+        if (s.includes('review') || s.includes('imported')) cls = 'status-review';
+        else if (s.includes('draft')) cls = 'status-draft';
+        else if (s.includes('applied') || s.includes('approved')) cls = 'status-applied';
+        return `<span class="badge badge-status ${cls}">${escapeHtml(status || '—')}</span>`;
+    }
+
+    function emptyStateRow(colspan, { icon, title, copy, ctaHtml = '' }) {
+        return `<tr><td colspan="${colspan}" class="p-0">
+            <div class="empty-state">
+                <div class="empty-icon"><i class="bi ${icon}"></i></div>
+                <div class="empty-title">${title}</div>
+                <div class="empty-copy">${copy}</div>
+                ${ctaHtml}
+            </div>
+        </td></tr>`;
+    }
+
+    function activityCategory(title = '', description = '') {
+        const t = `${title} ${description}`.toLowerCase();
+        if (t.includes('email') || t.includes('sync') || t.includes('imap') || t.includes('gmail') || t.includes('outlook') || t.includes('hotmail')) return 'sync';
+        if (t.includes('draft') || t.includes('resume') || t.includes('optimize')) return 'draft';
+        if (t.includes('apply') || t.includes('application')) return 'apply';
+        if (t.includes('discover') || t.includes('import') || t.includes('job') || t.includes('search') || t.includes('seed')) return 'discover';
+        return 'default';
+    }
+
+    function relativeTime(iso) {
+        if (!iso) return '';
+        const then = new Date(iso);
+        if (Number.isNaN(then.getTime())) return String(iso);
+        const sec = Math.round((Date.now() - then.getTime()) / 1000);
+        if (sec < 60) return `${Math.max(sec, 0)}s ago`;
+        if (sec < 3600) return `${Math.floor(sec / 60)}m ago`;
+        if (sec < 86400) return `${Math.floor(sec / 3600)}h ago`;
+        if (sec < 86400 * 7) return `${Math.floor(sec / 86400)}d ago`;
+        return then.toLocaleDateString();
+    }
+
     function fetchStats() {
         return fetchWithTimeout('/api/stats')
             .then(res => {
@@ -2094,10 +2401,10 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
             .then(data => {
                 data = data || {};
                 const counts = data.status_counts || {};
-                document.getElementById('stat-total-jobs').innerText = data.total_jobs || 0;
-                document.getElementById('stat-review-count').innerText = counts['Awaiting review'] || counts['Imported'] || 0;
-                document.getElementById('stat-drafts-count').innerText = counts['Resume draft ready'] || counts['Draft ready'] || 0;
-                document.getElementById('stat-applied-count').innerText = counts['Applied'] || counts['Approved'] || 0;
+                setStat('stat-total-jobs', 'stat-card-jobs', data.total_jobs || 0);
+                setStat('stat-review-count', 'stat-card-review', counts['Awaiting review'] || counts['Imported'] || 0);
+                setStat('stat-drafts-count', 'stat-card-drafts', counts['Resume draft ready'] || counts['Draft ready'] || 0);
+                setStat('stat-applied-count', 'stat-card-apps', counts['Applied'] || counts['Approved'] || 0);
 
                 // High score table
                 const hsBody = document.querySelector('#high-score-table tbody');
@@ -2105,20 +2412,26 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
                     hsBody.innerHTML = '';
                     const highScores = data.high_score_jobs || [];
                     if (highScores.length === 0) {
-                        const emptyMsg = (data.total_jobs || 0) === 0
-                            ? 'No jobs yet. Use <strong>Job Discovery</strong>, <strong>Import URL</strong>, or ask an admin to load demo data.'
-                            : 'No jobs scored ≥ 65 yet. Check Recently Discovered Jobs below or run Re-Score Jobs.';
-                        hsBody.innerHTML = `<tr><td colspan="6" class="text-center py-3 text-muted">${emptyMsg}</td></tr>`;
+                        const noJobs = (data.total_jobs || 0) === 0;
+                        hsBody.innerHTML = emptyStateRow(6, {
+                            icon: 'bi-stars',
+                            title: 'No high-match opportunities yet',
+                            copy: noJobs
+                                ? 'Discover jobs, sync email alerts, or import a URL to get started.'
+                                : 'Nothing scored ≥ 65 yet. Re-score jobs or check Recently Discovered below.',
+                            ctaHtml: noJobs
+                                ? `<button class="btn btn-sm btn-primary mt-2" onclick="goFindJobsNow()"><i class="bi bi-search"></i> Job Discovery</button>`
+                                : `<button class="btn btn-sm btn-outline-primary mt-2" onclick="runAnalyzeJobs()"><i class="bi bi-cpu"></i> Re-Score Jobs</button>`
+                        });
                     } else {
                         highScores.slice(0, 8).forEach(j => {
-                            const score = j.match_score != null ? Math.round(j.match_score) : 0;
                             const title = escapeHtml(j.title || 'Untitled Job');
                             const company = escapeHtml(j.company || 'Unknown Company');
                             const platform = escapeHtml(j.source_platform || 'N/A');
                             hsBody.innerHTML += `
                                 <tr>
                                     <td><strong>#${j.id}</strong></td>
-                                    <td><span class="badge bg-success badge-score">${score}</span></td>
+                                    <td class="text-center">${scoreBadge(j.match_score)}</td>
                                     <td><strong class="text-primary">${title}</strong></td>
                                     <td>${company}</td>
                                     <td><small class="text-muted">${platform}</small></td>
@@ -2140,7 +2453,12 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
                     const hint = err && err.name === 'AbortError'
                         ? 'Dashboard stats timed out. If a job search is running, wait for it to finish or click Refresh.'
                         : 'Failed to load high score jobs. Click Refresh or check the server terminal for errors.';
-                    hsBody.innerHTML = `<tr><td colspan="6" class="text-center py-3 text-danger">${hint}</td></tr>`;
+                    hsBody.innerHTML = emptyStateRow(6, {
+                        icon: 'bi-exclamation-triangle',
+                        title: 'Could not load high-match jobs',
+                        copy: hint,
+                        ctaHtml: `<button class="btn btn-sm btn-outline-primary mt-2" onclick="loadAllData()"><i class="bi bi-arrow-clockwise"></i> Refresh</button>`
+                    });
                 }
             });
     }
@@ -2189,21 +2507,22 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
             if (!tbody) return;
             tbody.innerHTML = '';
             if (!jobs || jobs.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="${withActions ? 6 : 5}" class="text-center py-3 text-muted">No jobs yet. Load demo jobs or run a platform search.</td></tr>`;
+                tbody.innerHTML = emptyStateRow(withActions ? 6 : 5, {
+                    icon: 'bi-briefcase',
+                    title: 'No jobs yet',
+                    copy: 'Load demo jobs, run a platform search, or import a job URL.',
+                    ctaHtml: `<button class="btn btn-sm btn-primary mt-2" onclick="goFindJobsNow()"><i class="bi bi-search"></i> Job Discovery</button>`
+                });
                 return;
             }
             jobs.forEach(j => {
-                const score = j.match_score != null ? Math.round(j.match_score) : '-';
-                const scoreBadge = j.match_score != null
-                    ? `<span class="badge ${j.match_score >= 65 ? 'bg-success' : 'bg-secondary'} badge-score">${score}</span>`
-                    : '<span class="badge bg-secondary">-</span>';
                 const actions = withActions
                     ? `<td><button class="btn btn-xs btn-outline-secondary py-0 px-2" onclick="openEditJobModal(${j.id})">Edit</button></td>`
                     : '';
                 tbody.innerHTML += `
                     <tr>
                         <td><strong>#${j.id}</strong></td>
-                        <td>${scoreBadge}</td>
+                        <td class="text-center">${scoreBadge(j.match_score)}</td>
                         <td><strong class="text-primary">${escapeHtml(j.title || '')}</strong></td>
                         <td>${escapeHtml(j.company || '')}</td>
                         <td><small class="text-muted">${escapeHtml(j.source_platform || '')}</small></td>
@@ -2343,16 +2662,20 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
         const tbody = document.querySelector('#all-jobs-table tbody');
         tbody.innerHTML = '';
         if (!jobs || jobs.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-muted">No jobs tracked. Click "Find Jobs Now" or "Import URL".</td></tr>';
+            tbody.innerHTML = emptyStateRow(7, {
+                icon: 'bi-inbox',
+                title: 'No jobs tracked',
+                copy: 'Click Find Jobs Now or Import URL to start building your pipeline.',
+                ctaHtml: `<button class="btn btn-sm btn-primary mt-2" onclick="goFindJobsNow()"><i class="bi bi-search"></i> Find Jobs Now</button>`
+            });
             return;
         }
         jobs.forEach(j => {
-            const scoreBadge = j.match_score ? `<span class="badge bg-success badge-score">${Math.round(j.match_score)}</span>` : '<span class="badge bg-secondary">-</span>';
             tbody.innerHTML += `
                 <tr>
                     <td><strong>#${j.id}</strong></td>
-                    <td><span class="badge bg-info text-dark">${j.status}</span></td>
-                    <td>${scoreBadge}</td>
+                    <td>${statusBadge(j.status)}</td>
+                    <td class="text-center">${scoreBadge(j.match_score)}</td>
                     <td><strong class="text-primary">${escapeHtml(j.title)}</strong></td>
                     <td>${escapeHtml(j.company)}</td>
                     <td><small class="text-muted">${j.source_platform}</small></td>
@@ -2376,12 +2699,12 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
             let cardsHtml = '';
 
             statusJobs.forEach(j => {
-                const scoreBadge = j.match_score ? `<span class="badge bg-success ms-auto">${Math.round(j.match_score)}</span>` : '';
+                const scoreHtml = j.match_score != null ? `<span class="ms-auto">${scoreBadge(j.match_score)}</span>` : '';
                 cardsHtml += `
                     <div class="kanban-card" onclick="selectForReview('${j.id}')">
                         <div class="d-flex align-items-center mb-1">
                             <strong class="text-dark fs-7">#${j.id}</strong>
-                            ${scoreBadge}
+                            ${scoreHtml}
                         </div>
                         <div class="fw-bold text-primary text-truncate mb-1" style="font-size:0.85rem;">${escapeHtml(j.title)}</div>
                         <div class="text-muted small text-truncate mb-2">${escapeHtml(j.company)}</div>
@@ -2416,27 +2739,37 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
             .then(acts => {
                 const list = document.getElementById('activity-feed-list');
                 if (!list) return;
-                list.innerHTML = '';
+                list.className = 'activity-timeline';
                 if (!acts || !Array.isArray(acts) || acts.length === 0) {
-                    list.innerHTML = '<li class="list-group-item text-muted text-center py-3">No activity logged yet.</li>';
+                    list.innerHTML = `<li class="empty-state py-4">
+                        <div class="empty-icon"><i class="bi bi-activity"></i></div>
+                        <div class="empty-title">No activity yet</div>
+                        <div class="empty-copy">Discover jobs or sync email alerts to see events here.</div>
+                    </li>`;
                     return;
                 }
-                acts.forEach(a => {
-                    list.innerHTML += `
-                        <li class="list-group-item py-2">
-                            <div class="d-flex justify-content-between">
-                                <strong class="text-dark">${escapeHtml(a.title || '')}</strong>
-                                <small class="text-muted fs-8">${a.created_at || ''}</small>
-                            </div>
-                            <small class="text-muted">${escapeHtml(a.description || '')}</small>
-                        </li>`;
-                });
+                list.innerHTML = acts.map(a => {
+                    const cat = activityCategory(a.title, a.description);
+                    return `<li class="activity-item cat-${cat}">
+                        <div class="d-flex justify-content-between align-items-start gap-2 mb-1">
+                            <span class="activity-tag">${cat}</span>
+                            <small class="text-muted" title="${escapeHtml(a.created_at || '')}">${relativeTime(a.created_at)}</small>
+                        </div>
+                        <div class="fw-semibold text-dark" style="font-size:0.85rem">${escapeHtml(a.title || '')}</div>
+                        <div class="text-muted" style="font-size:0.78rem">${escapeHtml(a.description || '')}</div>
+                    </li>`;
+                }).join('');
             })
             .catch(err => {
                 console.error("Error in fetchActivityFeed:", err);
                 const list = document.getElementById('activity-feed-list');
                 if (list) {
-                    list.innerHTML = '<li class="list-group-item text-danger text-center py-3">Failed to load activity feed.</li>';
+                    list.className = 'activity-timeline';
+                    list.innerHTML = `<li class="empty-state py-4">
+                        <div class="empty-icon"><i class="bi bi-exclamation-triangle"></i></div>
+                        <div class="empty-title">Failed to load activity</div>
+                        <div class="empty-copy">Click Refresh to try again.</div>
+                    </li>`;
                 }
             });
     }
