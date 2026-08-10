@@ -1111,7 +1111,13 @@ def test_cmd(
     guided: bool = typer.Option(
         False,
         "--guided",
-        help="Run paced Chrome walkthrough only (30 seconds per step, ~6 minutes).",
+        help="Run paced Chrome walkthrough only (~15 seconds per step by default).",
+    ),
+    flow_pause: float = typer.Option(
+        15.0,
+        "--flow-pause",
+        min=0.0,
+        help="Seconds to pause between guided E2E steps (pass 15 for faster walkthrough).",
     ),
     verbose: bool = typer.Option(False, "-v", "--verbose", help="Verbose pytest output"),
     install_browsers: bool = typer.Option(
@@ -1130,8 +1136,8 @@ def test_cmd(
         raise typer.Exit(code)
 
     if guided:
-        console.print("[bold]Running guided Chrome walkthrough[/bold] (30 seconds per step)")
-        console.print("[cyan]Watch Chrome — each step pauses so you can follow the application flow.[/cyan]")
+        console.print(f"[bold]Running guided Chrome walkthrough[/bold] ({flow_pause:g}s per step)")
+        console.print("[cyan]Watch Chrome — User Mode and Admin Setup are shown separately.[/cyan]")
     elif e2e and not headless:
         mode = "unit + API + E2E in visible Google Chrome"
     elif e2e:
@@ -1142,7 +1148,9 @@ def test_cmd(
         console.print(f"[bold]Running test suite[/bold] ({mode})")
         if e2e and not headless:
             console.print("[cyan]Chrome will open and run Web Console tests as an end user would see them.[/cyan]")
-    result = run_test_suite(coverage=coverage, e2e=e2e, verbose=verbose, headless=headless, guided=guided)
+    result = run_test_suite(
+        coverage=coverage, e2e=e2e, verbose=verbose, headless=headless, guided=guided, flow_pause=flow_pause
+    )
     if result.exit_code == 0:
         console.print("[green]All tests passed.[/green]")
     else:

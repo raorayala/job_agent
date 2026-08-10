@@ -27,13 +27,32 @@ def e2e_database_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 @pytest.fixture(scope="session")
-def web_base_url(e2e_database_path: Path) -> str:
+def e2e_config_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Isolated config so E2E mode toggles do not mutate the project config.yaml."""
+    cfg_dir = tmp_path_factory.mktemp("e2e_cfg")
+    cfg = cfg_dir / "config.yaml"
+    cfg.write_text(
+        "web_console:\n  default_mode: user\n  guided_flow_pause_seconds: 15\n  setup_locked: false\n",
+        encoding="utf-8",
+    )
+    return cfg
+
+
+@pytest.fixture(scope="session")
+def web_base_url(e2e_database_path: Path, e2e_config_path: Path) -> str:
     """Start Web Console on a dynamic port with an isolated test database."""
     os.environ["DATABASE_PATH"] = str(e2e_database_path)
+    os.environ["CONFIG_PATH"] = str(e2e_config_path)
     port = _free_port()
     server = start_web_dashboard_server(host="127.0.0.1", port=port)
     yield f"http://127.0.0.1:{port}"
     server.shutdown()
+
+
+@pytest.fixture(autouse=True)
+def isolate_console_mode_storage(page) -> None:
+    """Each E2E test starts in User Mode without prior browser state."""
+    page.add_init_script("localStorage.removeItem('job_agent_console_mode');")
 
 
 @pytest.fixture(scope="session")

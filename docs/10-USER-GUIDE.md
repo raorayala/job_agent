@@ -64,11 +64,12 @@ python -m job_agent profile
    python -m job_agent web
    ```
 2. Open `http://localhost:8000/` (ThreadingHTTPServer — not Streamlit).
-3. Review the **System Health** panel and onboarding checklist on the Dashboard.
-4. First time? Click **Load Demo Jobs** or run `python -m job_agent seed-demo`.
-5. Go to **Job Discovery** → select platforms (recommended: dice, ziprecruiter, indeed) → **Find Jobs Now**.
-6. Review **Last Platform Search Results** (per-platform success/empty/error) and **Recently Discovered Jobs** (all scores).
-7. Install the bookmarklet from **Install Bookmarklet** → `/capture` → **Mark as Installed**.
+3. **User Mode** (default) shows your daily workflow: Dashboard stats, Job Discovery, Resume Review, and Kanban. Admin-only setup tools are hidden.
+4. **First-time admin setup:** Click **Admin Setup** in the header → review **System Health** and the onboarding checklist → configure profile under **Profile & Skills** → click **Load Demo Jobs** or run `python -m job_agent seed-demo`.
+5. Return to **User Mode** (**Switch to User View**) for day-to-day job search.
+6. Go to **Job Discovery** → select platforms (recommended: dice, ziprecruiter, indeed) → **Find Jobs Now**.
+7. Review **Last Platform Search Results** (per-platform success/empty/error) and **Recently Discovered Jobs** (all scores).
+8. Install the bookmarklet from **Install Bookmarklet** → `/capture` → **Mark as Installed** (Admin Setup tab or direct `/capture` URL).
 
 ### Method B: Direct Platform Search (`fetch-jobs`)
 ```powershell

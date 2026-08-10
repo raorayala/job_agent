@@ -140,6 +140,48 @@ def save_candidate_profile(profile: CandidateProfile, config_path: Path | None =
         yaml.safe_dump(cfg, handle, sort_keys=False, allow_unicode=True)
 
 
+def get_web_console_settings(config_path: Path | None = None) -> dict[str, Any]:
+    """Return persisted Web Console preferences from config.yaml."""
+    cfg = load_yaml_config(config_path)
+    wc = cfg.get("web_console") if isinstance(cfg.get("web_console"), dict) else {}
+    mode = str(wc.get("default_mode", "user")).strip().lower()
+    if mode not in {"user", "admin"}:
+        mode = "user"
+    try:
+        pause = float(wc.get("guided_flow_pause_seconds", 15))
+    except (TypeError, ValueError):
+        pause = 15.0
+    return {
+        "default_mode": mode,
+        "guided_flow_pause_seconds": max(0.0, pause),
+        "setup_locked": bool(wc.get("setup_locked", False)),
+    }
+
+
+def save_web_console_settings(
+    *,
+    default_mode: str | None = None,
+    guided_flow_pause_seconds: float | None = None,
+    setup_locked: bool | None = None,
+    config_path: Path | None = None,
+) -> dict[str, Any]:
+    """Persist Web Console preferences to config.yaml (set once, stable over time)."""
+    path = config_path or Path(get_env("CONFIG_PATH", str(DEFAULT_CONFIG_PATH)) or DEFAULT_CONFIG_PATH)
+    cfg = load_yaml_config(path) if path.exists() else {}
+    current = get_web_console_settings(path)
+    if default_mode is not None:
+        mode = default_mode.strip().lower()
+        current["default_mode"] = mode if mode in {"user", "admin"} else "user"
+    if guided_flow_pause_seconds is not None:
+        current["guided_flow_pause_seconds"] = max(0.0, float(guided_flow_pause_seconds))
+    if setup_locked is not None:
+        current["setup_locked"] = bool(setup_locked)
+    cfg["web_console"] = current
+    with path.open("w", encoding="utf-8") as handle:
+        yaml.safe_dump(cfg, handle, sort_keys=False, allow_unicode=True)
+    return current
+
+
 def validate_config(config_dict: dict[str, Any] | None = None) -> list[str]:
     """
     Validate config.yaml structure and surface helpful warnings for malformed entries.

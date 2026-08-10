@@ -5,9 +5,9 @@ from __future__ import annotations
 import os
 import time
 
-from playwright.sync_api import Dialog, Page
+from playwright.sync_api import Dialog, Page, expect
 
-DEFAULT_FLOW_PAUSE_SECONDS = 30
+DEFAULT_FLOW_PAUSE_SECONDS = 15
 
 
 def flow_pause_seconds() -> float:
@@ -73,3 +73,15 @@ def click_tab(page: Page, tab_id: str) -> None:
     tab = page.locator(tab_id)
     tab.click()
     tab.wait_for(state="visible")
+
+
+def switch_console_mode(page: Page, mode: str) -> None:
+    """Switch Web Console between user and admin views."""
+    page.wait_for_load_state("networkidle")
+    badge = page.locator("#console-mode-badge")
+    badge.wait_for(state="visible")
+    target = "Admin Mode" if mode == "admin" else "User Mode"
+    if target in (badge.inner_text() or ""):
+        return
+    page.locator("#console-mode-toggle").click()
+    expect(badge).to_contain_text(target, timeout=5000)

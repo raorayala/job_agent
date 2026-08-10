@@ -34,7 +34,7 @@ from job_agent.cleanup_service import (
     clean_stale_or_excluded_jobs,
     purge_all_database_data,
 )
-from job_agent.config import get_settings, load_candidate_profile, save_candidate_profile
+from job_agent.config import get_settings, get_web_console_settings, load_candidate_profile, save_candidate_profile, save_web_console_settings
 from job_agent.database import ActivityLogRecord, JobRecord, create_db_engine, get_job, init_db, list_jobs, log_activity
 from job_agent.demo_data import seed_demo_jobs
 from job_agent.document_exporter import application_folder
@@ -409,9 +409,19 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
             font-weight: 700;
             color: #1d4ed8;
         }
+        body.console-mode-user .admin-only {
+            display: none !important;
+        }
+        body.console-mode-admin .user-only {
+            display: none !important;
+        }
+        #console-mode-badge {
+            font-size: 0.75rem;
+            letter-spacing: 0.03em;
+        }
     </style>
 </head>
-<body>
+<body class="console-mode-user">
 
 <header class="app-header d-flex justify-content-between align-items-center">
     <div>
@@ -419,6 +429,10 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
         <small class="text-light-50">Automated Review-First Personal Career Assistant (100% Private)</small>
     </div>
     <div class="d-flex align-items-center gap-2">
+        <span class="badge bg-light text-dark" id="console-mode-badge">User Mode</span>
+        <button type="button" class="btn btn-sm btn-outline-light" id="console-mode-toggle" onclick="toggleConsoleMode()" title="Switch between daily User view and Admin setup view">
+            <i class="bi bi-shield-lock"></i> <span id="console-mode-toggle-label">Admin Setup</span>
+        </button>
         <a href="/capture" class="btn btn-sm btn-warning text-dark" title="Install or re-install the 1-click Chrome bookmarklet"><i class="bi bi-bookmark-star-fill"></i> Install Bookmarklet</a>
         <button class="btn btn-sm btn-outline-light" onclick="openImportUrlModal()"><i class="bi bi-link-45deg"></i> Import URL</button>
         <a href="/api/calendar.ics" class="btn btn-sm btn-outline-light"><i class="bi bi-calendar-event"></i> .ics Calendar</a>
@@ -452,13 +466,13 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
         <li class="nav-item">
             <button class="nav-link" id="kanban-tab" data-bs-toggle="tab" data-bs-target="#kanban-pane"><i class="bi bi-kanban"></i> Application Board</button>
         </li>
-        <li class="nav-item">
+        <li class="nav-item admin-only">
             <button class="nav-link" id="db-tab" data-bs-toggle="tab" data-bs-target="#db-pane" onclick="loadDbExplorer()"><i class="bi bi-database-gear"></i> Database Explorer</button>
         </li>
-        <li class="nav-item">
+        <li class="nav-item admin-only">
             <button class="nav-link" id="profile-tab" data-bs-toggle="tab" data-bs-target="#profile-pane"><i class="bi bi-person-gear"></i> Profile & Skills Editor</button>
         </li>
-        <li class="nav-item">
+        <li class="nav-item admin-only">
             <button class="nav-link" id="cheatsheet-tab" data-bs-toggle="tab" data-bs-target="#cheatsheet-pane"><i class="bi bi-terminal"></i> CLI Runner</button>
         </li>
     </ul>
@@ -494,8 +508,14 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
                 </div>
             </div>
 
-            <!-- Getting Started Workflow -->
-            <div class="card border-0 shadow-sm mb-4 border-start border-primary border-4" id="getting-started-flow">
+            <!-- User focus banner (daily workflow) -->
+            <div class="alert alert-primary border-0 shadow-sm user-only mb-4" id="user-focus-banner">
+                <div class="fw-semibold mb-1"><i class="bi bi-briefcase-fill"></i> Daily job search workspace</div>
+                <div class="small mb-0">Discover jobs, review match scores, tailor resumes, and track applications. Configuration and database tools live in <strong>Admin Setup</strong> (top-right).</div>
+            </div>
+
+            <!-- Getting Started Workflow (admin setup once) -->
+            <div class="card border-0 shadow-sm mb-4 border-start border-primary border-4 admin-only" id="getting-started-flow">
                 <div class="card-body py-3">
                     <div class="fw-bold mb-2"><i class="bi bi-signpost-split-fill text-primary"></i> Recommended workflow</div>
                     <ol class="mb-0 small text-muted ps-3">
@@ -505,12 +525,12 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
                         <li class="mb-1"><strong class="text-dark">Review</strong> — Tailor drafts, approve explicitly, then apply manually on the employer site.</li>
                         <li><strong class="text-dark">Track</strong> — Move jobs on the Kanban board; mark Applied only after you submit.</li>
                     </ol>
-                    <div class="mt-2 small text-muted">Run <code>python -m job_agent test --guided</code> for a paced Chrome walkthrough (30 seconds per step).</div>
+                    <div class="mt-2 small text-muted">Run <code>python -m job_agent test --guided --flow-pause 15</code> for a paced Chrome walkthrough.</div>
                 </div>
             </div>
 
-            <!-- System Health & Onboarding -->
-            <div class="card border-0 shadow-sm mb-4" id="system-health-card">
+            <!-- System Health & Onboarding (admin) -->
+            <div class="card border-0 shadow-sm mb-4 admin-only" id="system-health-card">
                 <div class="card-header bg-white fw-bold py-3 d-flex justify-content-between align-items-center">
                     <span><i class="bi bi-heart-pulse text-danger"></i> System Health & Setup Checklist</span>
                     <button class="btn btn-sm btn-outline-success" onclick="openSeedDemoModal()"><i class="bi bi-database-add"></i> Load Demo Jobs</button>
@@ -532,6 +552,17 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
                     </div>
                     <div class="mb-2 fw-semibold small">Getting started checklist:</div>
                     <ul class="list-group list-group-flush small" id="onboarding-checklist"></ul>
+                </div>
+            </div>
+
+            <!-- Compact setup status for users -->
+            <div class="card border-0 shadow-sm mb-4 user-only" id="user-setup-status-card">
+                <div class="card-body py-3 d-flex flex-wrap align-items-center justify-content-between gap-2">
+                    <div>
+                        <div class="fw-bold mb-1"><i class="bi bi-check2-circle text-success"></i> Ready to search</div>
+                        <div class="small text-muted mb-0" id="user-setup-summary">Loading setup status...</div>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleConsoleMode(true)"><i class="bi bi-shield-lock"></i> Open Admin Setup</button>
                 </div>
             </div>
 
@@ -1225,6 +1256,58 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
     }
 
     const BOOKMARKLET_INSTALLED_KEY = 'job_agent_bookmarklet_installed';
+    const CONSOLE_MODE_KEY = 'job_agent_console_mode';
+    const ADMIN_TAB_IDS = ['db-tab', 'profile-tab', 'cheatsheet-tab'];
+
+    function applyConsoleMode(mode, persistRemote = true) {
+        const normalized = mode === 'admin' ? 'admin' : 'user';
+        document.body.classList.remove('console-mode-user', 'console-mode-admin');
+        document.body.classList.add(normalized === 'admin' ? 'console-mode-admin' : 'console-mode-user');
+        localStorage.setItem(CONSOLE_MODE_KEY, normalized);
+        const badge = document.getElementById('console-mode-badge');
+        const toggleLabel = document.getElementById('console-mode-toggle-label');
+        if (badge) {
+            badge.textContent = normalized === 'admin' ? 'Admin Mode' : 'User Mode';
+            badge.className = normalized === 'admin' ? 'badge bg-warning text-dark' : 'badge bg-light text-dark';
+        }
+        if (toggleLabel) {
+            toggleLabel.textContent = normalized === 'admin' ? 'Switch to User View' : 'Admin Setup';
+        }
+        if (normalized === 'user') {
+            const active = document.querySelector('.nav-link.active');
+            if (active && ADMIN_TAB_IDS.includes(active.id)) {
+                switchTab('dashboard-tab');
+            }
+        }
+        if (persistRemote) {
+            fetch('/api/console-settings', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ default_mode: normalized })
+            }).catch(err => console.warn('Could not persist console mode:', err));
+        }
+    }
+
+    function toggleConsoleMode(forceAdmin) {
+        const next = forceAdmin === true
+            ? 'admin'
+            : (document.body.classList.contains('console-mode-admin') ? 'user' : 'admin');
+        applyConsoleMode(next, true);
+    }
+
+    function initConsoleMode() {
+        const stored = localStorage.getItem(CONSOLE_MODE_KEY);
+        if (stored === 'admin' || stored === 'user') {
+            applyConsoleMode(stored, false);
+            return;
+        }
+        fetch('/api/console-settings')
+            .then(res => res.json())
+            .then(settings => {
+                applyConsoleMode(settings.default_mode || 'user', false);
+            })
+            .catch(() => applyConsoleMode('user', false));
+    }
 
     function updateBookmarkletInstallStatus() {
         const statusEl = document.getElementById('bookmarklet-install-status');
@@ -1251,6 +1334,7 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
     }
 
     document.addEventListener("DOMContentLoaded", function() {
+        try { initConsoleMode(); } catch (err) { console.error("initConsoleMode failed:", err); }
         try { renderTop10PlatformsGrid(); } catch (err) { console.error("renderTop10PlatformsGrid failed:", err); }
         try { updateBookmarkletInstallStatus(); } catch (err) { console.error("updateBookmarkletInstallStatus failed:", err); }
         loadAllData();
@@ -1358,7 +1442,7 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
                     const highScores = data.high_score_jobs || [];
                     if (highScores.length === 0) {
                         const emptyMsg = (data.total_jobs || 0) === 0
-                            ? 'No jobs yet. Click <strong>Load Demo Jobs</strong> or run a platform search.'
+                            ? 'No jobs yet. Use <strong>Job Discovery</strong>, <strong>Import URL</strong>, or ask an admin to load demo data.'
                             : 'No jobs scored ≥ 65 yet. Check Recently Discovered Jobs below or run Re-Score Jobs.';
                         hsBody.innerHTML = `<tr><td colspan="6" class="text-center py-3 text-muted">${emptyMsg}</td></tr>`;
                     } else {
@@ -1422,6 +1506,16 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
                     <i class="bi ${step.done ? 'bi-check-circle-fill text-success' : 'bi-circle text-muted'}"></i>
                     <span>${escapeHtml(step.label)}</span>
                 </li>`).join('');
+        }
+        const userSummary = document.getElementById('user-setup-summary');
+        if (userSummary && health.onboarding_steps) {
+            const done = health.onboarding_steps.filter(s => s.done).length;
+            const total = health.onboarding_steps.length;
+            if (health.onboarding_complete) {
+                userSummary.innerHTML = `Setup complete (${done}/${total}). Use Job Discovery and Resume Review for your daily workflow.`;
+            } else {
+                userSummary.innerHTML = `Setup in progress (${done}/${total} complete). An administrator should finish profile, resume, and Gmail in <strong>Admin Setup</strong>.`;
+            }
         }
     }
 
@@ -2588,6 +2682,15 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(json.dumps(CLI_COMMANDS_METADATA).encode("utf-8"))
 
+            elif url_path == "/api/console-settings":
+                settings = get_settings()
+                payload = get_web_console_settings(settings.config_path)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors_headers()
+                self.end_headers()
+                self.wfile.write(json.dumps(payload).encode("utf-8"))
+
             else:
                 self.send_error(404, "Page not found")
 
@@ -2932,6 +3035,22 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
                     self.wfile.write(json.dumps(payload).encode("utf-8"))
                 finally:
                     session.close()
+
+            elif url_path == "/api/console-settings":
+                data = json.loads(body)
+                settings = get_settings()
+                saved = save_web_console_settings(
+                    default_mode=data.get("default_mode"),
+                    guided_flow_pause_seconds=data.get("guided_flow_pause_seconds"),
+                    setup_locked=data.get("setup_locked"),
+                    config_path=settings.config_path,
+                )
+                payload = {"status": "success", **saved}
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors_headers()
+                self.end_headers()
+                self.wfile.write(json.dumps(payload).encode("utf-8"))
 
             elif url_path == "/api/profile":
                 data = json.loads(body)

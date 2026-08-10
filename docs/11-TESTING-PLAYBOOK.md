@@ -28,22 +28,27 @@ python -m job_agent jobs
 
 | Check | Expected |
 |-------|----------|
-| System Health card | DB path shown; onboarding checklist visible |
-| Stat cards | Total jobs ≥ 3 |
+| User Mode banner | Daily workflow focus visible; admin tools hidden |
+| Stat cards | Total jobs ≥ 3 (after seed) |
 | Recently Discovered Jobs | 3 demo rows with scores |
 | High-Match Opportunities | May show jobs if score ≥ 65, or helpful empty message |
 
+**Admin setup:** Click **Admin Setup** in the header to open System Health, Load Demo Jobs, Profile editor, CLI runner, and DB explorer.
+
 Alternative: click **Load Demo Jobs** on the dashboard (same as `seed-demo`). A confirmation modal appears before inserting sample data.
 
-## Guided Chrome walkthrough (~6 minutes)
+## Guided Chrome walkthrough (~4 minutes)
 
-Learn every major UI flow with **30-second pauses** between steps:
+Learn every major UI flow with **15-second pauses** between steps (configurable):
 
 ```powershell
 python -m job_agent test --guided
+python -m job_agent test --guided --flow-pause 20   # custom pause (seconds)
 ```
 
-Chrome opens visibly. A step guide overlay appears in the bottom-right corner. The walkthrough covers: dashboard health, demo seed, re-score, job edit, platform search, resume review, Kanban, profile editor, CLI runner, database explorer, and bookmarklet install.
+Chrome opens visibly. A step guide overlay appears in the bottom-right corner. The walkthrough starts in **User Mode** (daily workflow: dashboard, discovery, review, Kanban), then switches to **Admin Setup** (profile, health checklist, demo seed, CLI runner, database explorer, bookmarklet).
+
+**Admin vs User Mode:** The Web Console defaults to **User Mode** for day-to-day job search. Click **Admin Setup** in the header (or the banner link) to configure profile, load demo data, run CLI commands, and inspect the database. Mode is saved in `config.yaml` (`web_console.default_mode`) and your browser.
 
 ## Platform search path (~5+ minutes)
 
@@ -74,7 +79,7 @@ python -m job_agent purge-data --confirm
 pytest -q
 ```
 
-Current suite: **53 tests** (config, DB, matcher, platform fetcher, web dashboard API, demo seed, health, backup/purge).
+Current suite: **65 tests** (config, DB, matcher, platform fetcher, web dashboard API, demo seed, health, backup/purge, browser E2E).
 
 ## Troubleshooting
 

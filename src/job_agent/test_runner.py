@@ -27,11 +27,12 @@ def run_test_suite(
     verbose: bool = False,
     headless: bool = False,
     guided: bool = False,
+    flow_pause: float = 15.0,
     extra_args: list[str] | None = None,
 ) -> TestRunResult:
     """Run pytest across unit, HTTP API, and optional browser E2E tests."""
     if guided:
-        os.environ["E2E_FLOW_PAUSE_SECONDS"] = "30"
+        os.environ["E2E_FLOW_PAUSE_SECONDS"] = str(max(0.0, flow_pause))
         cmd = [sys.executable, "-m", "pytest", "tests/e2e/test_guided_user_flow.py", "-m", "guided"]
     else:
         cmd = [sys.executable, "-m", "pytest", "tests"]

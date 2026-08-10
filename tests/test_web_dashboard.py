@@ -42,7 +42,37 @@ def test_get_index_html(web_server):
         assert "selectRecommendedPlatforms" in html
         assert "Top 3 Recommended" in html
         assert 'id="system-health-card"' in html
+        assert 'id="user-focus-banner"' in html
+        assert 'id="console-mode-toggle"' in html
         assert 'id="recent-jobs-table"' in html
+
+
+def test_get_api_console_settings(web_server):
+    req = urllib.request.Request(f"{web_server}/api/console-settings")
+    with urllib.request.urlopen(req, timeout=5) as resp:
+        assert resp.status == 200
+        data = json.loads(resp.read().decode("utf-8"))
+        assert data["default_mode"] in {"user", "admin"}
+        assert "guided_flow_pause_seconds" in data
+
+
+def test_post_api_console_settings(web_server, tmp_path, monkeypatch):
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("web_console:\n  default_mode: user\n  guided_flow_pause_seconds: 15\n", encoding="utf-8")
+    monkeypatch.setenv("CONFIG_PATH", str(cfg))
+    payload = json.dumps({"default_mode": "admin", "guided_flow_pause_seconds": 20}).encode("utf-8")
+    req = urllib.request.Request(
+        f"{web_server}/api/console-settings",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=5) as resp:
+        assert resp.status == 200
+        data = json.loads(resp.read().decode("utf-8"))
+        assert data["status"] == "success"
+        assert data["default_mode"] == "admin"
+        assert data["guided_flow_pause_seconds"] == 20
 
 
 def test_get_api_commands(web_server):

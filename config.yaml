@@ -159,3 +159,7 @@ application_statuses:
 duplicate:
   title_similarity_threshold: 0.88
   content_similarity_threshold: 0.9
+web_console:
+  default_mode: user
+  guided_flow_pause_seconds: 15.0
+  setup_locked: false

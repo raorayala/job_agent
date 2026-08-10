@@ -22,7 +22,8 @@ Install and run:
 pip install -e ".[dev]"
 python -m job_agent test --install-browsers   # one-time Chrome/Playwright setup
 python -m job_agent test                        # unit + API + E2E in visible Google Chrome
-python -m job_agent test --guided               # paced Chrome walkthrough (30s per step)
+python -m job_agent test --guided               # paced Chrome walkthrough (15s per step default)
+python -m job_agent test --guided --flow-pause 20 # custom pause between guided steps (seconds)
 python -m job_agent test --headless               # headless Chromium (CI/automation)
 python -m job_agent test --no-e2e                 # skip browser tests (fast console-only)
 python -m job_agent test --cov                    # with coverage
@@ -50,9 +51,9 @@ pytest --cov=job_agent --cov-report=term-missing
 |-------|----------|----------------|
 | Unit / integration | `tests/test_*.py` | Config, DB, matcher, Gmail parse, platform fetcher, services |
 | HTTP API | `tests/test_web_dashboard.py` | REST endpoints without a browser |
-| Browser E2E | `tests/e2e/` | Playwright in **visible Google Chrome**: tabs, demo seed, discovery, capture, CLI runner |
+| Browser E2E | `tests/e2e/` | Playwright in **visible Google Chrome**: admin/user mode, tabs, demo seed, discovery, capture, CLI runner |
 
-## 4. Current test map (63 tests)
+## 4. Current test map (65 tests)
 
 | File | Covers |
 |------|--------|
@@ -69,7 +70,8 @@ pytest --cov=job_agent --cov-report=term-missing
 | `tests/test_cleanup_service.py` | Full purge including `activity_logs` |
 | `tests/test_backup_service.py` | Backup, restore, purge |
 | `tests/test_review_first_workflow.py` | Browser launcher, config validation |
-| `tests/e2e/test_web_console_ui.py` | Playwright browser E2E: dashboard, tabs, demo seed, capture |
+| `tests/e2e/test_web_console_ui.py` | Playwright browser E2E: admin/user mode, dashboard, tabs, demo seed, capture |
+| `tests/e2e/test_guided_user_flow.py` | Paced guided walkthrough (excluded from default run; use `--guided`) |
 
 ## 5. Manual smoke test
 
