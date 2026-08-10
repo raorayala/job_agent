@@ -101,3 +101,51 @@ def generate_report(session: Session, period: str = "weekly") -> str:
         lines.append(f" - {stat}: {count}")
 
     return "\n".join(lines)
+
+
+def generate_ics_calendar(session: Session) -> str:
+    """Generate standard iCalendar (.ics) string containing upcoming follow-ups and interviews."""
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//Job Search Agent//Personal Career Assistant//EN",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+    ]
+
+    # Add follow-ups
+    stmt_followups = select(JobRecord).where(JobRecord.follow_up_date.isnot(None))
+    for job in session.scalars(stmt_followups):
+        if not job.follow_up_date:
+            continue
+        dt_start = _ensure_utc(job.follow_up_date).strftime("%Y%m%dT%H%M%SZ")
+        lines.extend([
+            "BEGIN:VEVENT",
+            f"UID:followup-job-{job.id}@jobsearchagent.local",
+            f"DTSTAMP:{dt_start}",
+            f"DTSTART:{dt_start}",
+            f"SUMMARY:Follow-up Due: {job.title} at {job.company}",
+            f"DESCRIPTION:Follow up on job application #{job.id} ({job.status}). URL: {job.job_url or 'N/A'}",
+            "END:VEVENT",
+        ])
+
+    # Add interviews
+    stmt_interviews = select(InterviewRecord)
+    for iv in session.scalars(stmt_interviews):
+        if not iv.interview_date:
+            continue
+        dt_start = _ensure_utc(iv.interview_date).strftime("%Y%m%dT%H%M%SZ")
+        job = session.get(JobRecord, iv.job_id) if iv.job_id else None
+        job_info = f" ({job.title} at {job.company})" if job else ""
+        lines.extend([
+            "BEGIN:VEVENT",
+            f"UID:interview-{iv.id}@jobsearchagent.local",
+            f"DTSTAMP:{dt_start}",
+            f"DTSTART:{dt_start}",
+            f"SUMMARY:Interview ({iv.interview_type}){job_info}",
+            f"DESCRIPTION:Participants: {iv.participants or 'N/A'}\\nNotes: {iv.notes or 'N/A'}",
+            "END:VEVENT",
+        ])
+
+    lines.append("END:VCALENDAR")
+    return "\r\n".join(lines)

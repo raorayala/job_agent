@@ -1,113 +1,105 @@
-# Job Search Agent configuration
-# Edit this file to match your career targets. Sensitive overrides can go in .env.
-
 platforms:
   ziprecruiter:
-    sender_domains: ["ziprecruiter.com", "notifications.ziprecruiter.com"]
-    link_patterns: ["ziprecruiter.com/jobs/", "ziprecruiter.com/ck/"]
+    sender_domains:
+    - ziprecruiter.com
+    - notifications.ziprecruiter.com
+    link_patterns:
+    - ziprecruiter.com/jobs/
+    - ziprecruiter.com/ck/
   indeed:
-    sender_domains: ["indeed.com", "indeedemail.com"]
-    link_patterns: ["indeed.com/viewjob", "indeed.com/rc/clk", "indeed.com/pagead/"]
+    sender_domains:
+    - indeed.com
+    - indeedemail.com
+    link_patterns:
+    - indeed.com/viewjob
+    - indeed.com/rc/clk
+    - indeed.com/pagead/
   glassdoor:
-    sender_domains: ["glassdoor.com", "glassdoor.io"]
-    link_patterns: ["glassdoor.com/job-listing/", "glassdoor.com/partner/"]
+    sender_domains:
+    - glassdoor.com
+    - glassdoor.io
+    link_patterns:
+    - glassdoor.com/job-listing/
+    - glassdoor.com/partner/
   dice:
-    sender_domains: ["dice.com"]
-    link_patterns: ["dice.com/job-detail/", "dice.com/jobs/detail/"]
+    sender_domains:
+    - dice.com
+    link_patterns:
+    - dice.com/job-detail/
+    - dice.com/jobs/detail/
   lensa:
-    sender_domains: ["lensa.com"]
-    link_patterns: ["lensa.com/jobs/", "lensa.com/job/"]
-
-# Candidate profile — customize before running analyze/tailor
+    sender_domains:
+    - lensa.com
+    link_patterns:
+    - lensa.com/jobs/
+    - lensa.com/job/
 profile:
   target_titles:
-    - Senior Java Backend Engineer
-    - Senior Backend Engineer
-    - Senior Software Engineer
-    - Distributed Systems Engineer
-    - Platform Engineer
-    - Cloud Backend Engineer
+  - Staff Software Engineer
   industries:
-    - Financial Services
-    - Payments, Fintech
-    - SaaS 
-    - Site Reliability Engineer
-    - Enterprise Software
-    - optionally Security/Identity
+  - Financial Services
+  - Payments, Fintech
+  - SaaS
+  - Site Reliability Engineer
+  - Enterprise Software
+  - optionally Security/Identity
   required_skills:
-    - Java
-    - SpringBoot
-    - Microservices
-    - REST APIs
-    - AWS
-    - GCP
-    - Docker
-    - Kubernetes
-    - CI/CD
-    - Python
-    - NoSQL
-    - SQL
-    - Git
+  - Python
+  - Docker
   preferred_skills:
-    - Kafka
-    - JMS
-    - MongoDB
-    - Oracle
-    - Jenkins
-    - API Gateway
-    - Splunk
-    - Prometheus
-    - Grafana
-    - PostgreSQL
-    - Oracle
-    - OAuth2
-    - JWT
-    - BDD
-    - TDD
-    - incident management
-    - payments
-    - PCI compliance
-    - PII compliance
-    - SOX compliance
-    - identity
-    - KYC
-    - application security
-    - observability
-    - high-volume distributed systems
-
-  years_experience: 15
-
+  - Kafka
+  - JMS
+  - MongoDB
+  - Oracle
+  - Jenkins
+  - API Gateway
+  - Splunk
+  - Prometheus
+  - Grafana
+  - PostgreSQL
+  - Oracle
+  - OAuth2
+  - JWT
+  - BDD
+  - TDD
+  - incident management
+  - payments
+  - PCI compliance
+  - PII compliance
+  - SOX compliance
+  - identity
+  - KYC
+  - application security
+  - observability
+  - high-volume distributed systems
+  years_experience: 8
   locations:
-    - All Remote jobs
-    - Bay Area
-    - SanFrancisco
-    - Texas
-    - Virginia
-    
+  - All Remote jobs
+  - Bay Area
+  - SanFrancisco
+  - Texas
+  - Virginia
   work_modes:
-    - remote
-    - hybrid
-    - on-Site
+  - remote
+  - hybrid
+  - on-site
   salary_min: 130000
   salary_max: 180000
   salary_currency: USD
   employment_types:
-    - full-time
-    - contract
-    - part time
-  work_authorization: "U.S. Citizen"
+  - full-time
+  - contract
+  - part time
+  work_authorization: U.S. Citizen
   excluded_companies: []
   excluded_titles:
-    - intern
-    - unpaid
+  - intern
+  - unpaid
   excluded_skills: []
   excluded_locations: []
-
-  # override via MASTER_RESUME_PATH in .env
-  master_resume_path: null  
+  master_resume_path: C:\Users\Admin\Desktop\Jobs Applied\master_resume.docx
+  master_resumes: {}
   cover_letter_template_path: null
-
-# Weighted match factors (must sum conceptually to explainable scoring)
 match_weights:
   required_skills: 30
   preferred_skills: 20
@@ -115,20 +107,16 @@ match_weights:
   experience_alignment: 10
   location_work_mode: 15
   salary_compatibility: 10
-
-# Application lifecycle statuses
 application_statuses:
-  - Saved
-  - Reviewing
-  - Ready to apply
-  - Applied
-  - Interviewing
-  - Rejected
-  - Offer
-  - Withdrawn
-  - Archived
-
-# Duplicate detection thresholds
+- Saved
+- Reviewing
+- Ready to apply
+- Applied
+- Interviewing
+- Rejected
+- Offer
+- Withdrawn
+- Archived
 duplicate:
   title_similarity_threshold: 0.88
-  content_similarity_threshold: 0.90
+  content_similarity_threshold: 0.9

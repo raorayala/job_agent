@@ -53,6 +53,39 @@ def test_get_api_jobs(web_server):
         assert isinstance(data, list)
 
 
+def test_get_calendar_ics(web_server):
+    req = urllib.request.Request(f"{web_server}/api/calendar.ics")
+    with urllib.request.urlopen(req, timeout=5) as resp:
+        assert resp.status == 200
+        content = resp.read().decode("utf-8")
+        assert "BEGIN:VCALENDAR" in content
+        assert "END:VCALENDAR" in content
+
+
+def test_get_and_post_profile(web_server):
+    req_get = urllib.request.Request(f"{web_server}/api/profile")
+    with urllib.request.urlopen(req_get, timeout=5) as resp:
+        assert resp.status == 200
+        p = json.loads(resp.read().decode("utf-8"))
+        assert "target_titles" in p
+
+    payload = json.dumps({
+        "target_titles": ["Staff Software Engineer"],
+        "required_skills": ["Python", "Docker"],
+        "years_experience": 8,
+    }).encode("utf-8")
+    req_post = urllib.request.Request(
+        f"{web_server}/api/profile",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req_post, timeout=5) as resp:
+        assert resp.status == 200
+        res = json.loads(resp.read().decode("utf-8"))
+        assert res["status"] == "success"
+
+
 def test_post_run_command_statuses(web_server):
     payload = json.dumps({"command": "statuses", "args": []}).encode("utf-8")
     req = urllib.request.Request(

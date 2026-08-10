@@ -108,6 +108,36 @@ def load_candidate_profile(config: dict[str, Any] | None = None) -> CandidatePro
     return profile
 
 
+def save_candidate_profile(profile: CandidateProfile, config_path: Path | None = None) -> None:
+    """Save CandidateProfile data back into config.yaml profile mapping."""
+    path = config_path or Path(get_env("CONFIG_PATH", str(DEFAULT_CONFIG_PATH)) or DEFAULT_CONFIG_PATH)
+    cfg = load_yaml_config(path) if path.exists() else {}
+
+    cfg["profile"] = {
+        "target_titles": profile.target_titles,
+        "industries": profile.industries,
+        "required_skills": profile.required_skills,
+        "preferred_skills": profile.preferred_skills,
+        "years_experience": profile.years_experience,
+        "locations": profile.locations,
+        "work_modes": profile.work_modes,
+        "salary_min": profile.salary_min,
+        "salary_max": profile.salary_max,
+        "salary_currency": profile.salary_currency,
+        "employment_types": profile.employment_types,
+        "work_authorization": profile.work_authorization,
+        "excluded_companies": profile.excluded_companies,
+        "excluded_titles": profile.excluded_titles,
+        "excluded_skills": profile.excluded_skills,
+        "excluded_locations": profile.excluded_locations,
+        "master_resume_path": profile.master_resume_path,
+        "master_resumes": profile.master_resumes,
+        "cover_letter_template_path": profile.cover_letter_template_path,
+    }
+    with path.open("w", encoding="utf-8") as handle:
+        yaml.safe_dump(cfg, handle, sort_keys=False, allow_unicode=True)
+
+
 def get_settings(project_root: Path | None = None) -> Settings:
     root = project_root or PROJECT_ROOT
     load_dotenv_files(root)

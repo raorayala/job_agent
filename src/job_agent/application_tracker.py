@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -24,6 +24,7 @@ from job_agent.models import (
     MatchExplanation,
     ParsedJob,
 )
+from job_agent.notification_service import send_desktop_notification
 
 logger = get_logger(__name__)
 
@@ -120,6 +121,12 @@ def record_parsed_job(
         dupe_result.is_duplicate,
     )
 
+    if match.score >= 70 and not dupe_result.is_duplicate:
+        send_desktop_notification(
+            f"High Match Job Discovered ({match.score:.0f}/100)",
+            f"{record.title} @ {record.company}"
+        )
+
     return record, match, dupe_result
 
 
@@ -160,7 +167,10 @@ def update_status(
     if notes is not None:
         job.notes = notes
     if status == ApplicationStatus.APPLIED.value:
-        job.date_applied = datetime.now(timezone.utc)
+        now_utc = datetime.now(timezone.utc)
+        job.date_applied = now_utc
+        if job.follow_up_date is None:
+            job.follow_up_date = now_utc + timedelta(days=7)
 
     session.commit()
     session.refresh(job)

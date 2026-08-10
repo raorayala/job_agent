@@ -7,9 +7,11 @@ from typing import Sequence
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from job_agent.config import get_settings
 from job_agent.database import ApplicationAnswer, JobRecord
 from job_agent.logging_config import get_logger
 from job_agent.models import CandidateProfile
+from job_agent.ollama_service import generate_ollama_completion
 from job_agent.resume_parser import extract_resume_text
 
 logger = get_logger(__name__)
@@ -80,7 +82,29 @@ def suggest_answer(
     resume_path = profile.get_master_resume_path(job_title)
     resume_text = extract_resume_text(resume_path)
 
-    # Rule-based draft generation based on question keywords
+    # 2. Check if local Ollama offline LLM is configured and available
+    settings = get_settings()
+    if settings.llm_provider == "ollama":
+        prompt = (
+            f"Draft a concise, factual, professional answer to the following job application question:\n"
+            f"Question: '{question}'\n\n"
+            f"Candidate Context:\n"
+            f"- Target Roles: {', '.join(profile.target_titles)}\n"
+            f"- Skills: {', '.join(profile.required_skills)}\n"
+            f"- Years Experience: {profile.years_experience}\n"
+            f"- Target Job: {job_title} at {job_company}\n"
+            f"- Resume Context: {resume_text[:600] if resume_text else 'N/A'}\n\n"
+            f"Constraint: Keep answer under 100 words. Be factual. Do NOT invent dates or employers."
+        )
+        ollama_res = generate_ollama_completion(prompt, settings)
+        if ollama_res:
+            return (
+                f"[DRAFT SUGGESTION (OLLAMA LOCAL AI) - REQUIRES USER REVIEW]\n"
+                f"{ollama_res}\n\n"
+                f"Note: Verify and edit this draft before using in your job application."
+            )
+
+    # 3. Rule-based draft generation based on question keywords
     draft_body = ""
     if "years" in norm_q or "experience" in norm_q:
         draft_body = f"I have {profile.years_experience} years of experience in software development, targeting roles in {', '.join(profile.target_titles[:3])}."

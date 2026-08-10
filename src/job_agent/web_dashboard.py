@@ -1,4 +1,4 @@
-"""Web application dashboard and interactive CLI command execution server for Job Search Agent."""
+"""Web application dashboard, Kanban board, profile editor, and CLI command execution server."""
 
 from __future__ import annotations
 
@@ -12,13 +12,14 @@ from pathlib import Path
 from threading import Thread
 from typing import Any
 
-from job_agent.application_tracker import list_tracked_jobs, mark_applied, record_parsed_job
+from job_agent.application_tracker import list_tracked_jobs, mark_applied, record_parsed_job, update_status
 from job_agent.backup_service import create_backup
-from job_agent.config import get_settings, load_candidate_profile
+from job_agent.config import get_settings, load_candidate_profile, save_candidate_profile
 from job_agent.database import JobRecord, get_job, init_db, list_jobs
+from job_agent.document_exporter import application_folder
 from job_agent.logging_config import get_logger
-from job_agent.models import ParsedJob
-from job_agent.report_service import generate_pipeline_summary, generate_report
+from job_agent.models import CandidateProfile, ParsedJob
+from job_agent.report_service import generate_ics_calendar, generate_pipeline_summary, generate_report
 
 logger = get_logger(__name__)
 
@@ -344,13 +345,12 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Job Search Agent — Web Console & CLI Cheat Sheet</title>
+    <title>Job Search Agent — Web Console & Interactive Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <style>
         :root {
             --bg-main: #f8f9fa;
-            --sidebar-bg: #1e293b;
             --card-border: #e2e8f0;
             --brand-primary: #2563eb;
         }
@@ -386,20 +386,36 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
             font-size: 1.85rem;
             font-weight: 700;
         }
+        .kanban-col {
+            background: #f1f5f9;
+            border-radius: 10px;
+            padding: 1rem;
+            min-height: 500px;
+        }
+        .kanban-card {
+            background: #ffffff;
+            border-radius: 8px;
+            padding: 0.85rem;
+            margin-bottom: 0.85rem;
+            border: 1px solid var(--card-border);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            cursor: pointer;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        .kanban-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
         .command-card {
             border: 1px solid var(--card-border);
             border-radius: 10px;
             background: #ffffff;
-            transition: transform 0.15s ease, box-shadow 0.15s ease;
-        }
-        .command-card:hover {
-            box-shadow: 0 6px 12px -2px rgba(0, 0, 0, 0.08);
         }
         .terminal-box {
             background-color: #0f172a;
             color: #38bdf8;
             font-family: 'Courier New', Courier, monospace;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             border-radius: 8px;
             padding: 1.25rem;
             max-height: 450px;
@@ -418,11 +434,12 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
 <header class="app-header d-flex justify-content-between align-items-center">
     <div>
         <h4 class="mb-0 fw-bold"><i class="bi bi-robot"></i> Job Search Agent Web Console</h4>
-        <small class="text-light-50">Local-first Private Assistant & Interactive CLI Executor</small>
+        <small class="text-light-50">Local-first Private Assistant, Kanban Board & Automation Suite</small>
     </div>
-    <div>
+    <div class="d-flex align-items-center gap-2">
+        <a href="/api/calendar.ics" class="btn btn-sm btn-outline-light"><i class="bi bi-calendar-event"></i> Export .ics Calendar</a>
         <span class="badge bg-success me-2"><i class="bi bi-shield-check"></i> Local-First (100% Private)</span>
-        <button class="btn btn-sm btn-outline-light" onclick="loadAllData()"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
+        <button class="btn btn-sm btn-primary" onclick="loadAllData()"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
     </div>
 </header>
 
@@ -433,13 +450,19 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
             <button class="nav-link active" id="dashboard-tab" data-bs-toggle="tab" data-bs-target="#dashboard-pane"><i class="bi bi-speedometer2"></i> Dashboard</button>
         </li>
         <li class="nav-item">
-            <button class="nav-link" id="cheatsheet-tab" data-bs-toggle="tab" data-bs-target="#cheatsheet-pane"><i class="bi bi-terminal"></i> CLI Command Cheat Sheet & Runner</button>
+            <button class="nav-link" id="kanban-tab" data-bs-toggle="tab" data-bs-target="#kanban-pane"><i class="bi bi-kanban"></i> Kanban Application Board</button>
         </li>
         <li class="nav-item">
             <button class="nav-link" id="jobs-tab" data-bs-toggle="tab" data-bs-target="#jobs-pane"><i class="bi bi-briefcase"></i> Tracked Jobs Explorer</button>
         </li>
         <li class="nav-item">
-            <button class="nav-link" id="bookmarklet-tab" data-bs-toggle="tab" data-bs-target="#bookmarklet-pane"><i class="bi bi-bookmark-star"></i> 1-Click Bookmarklet</button>
+            <button class="nav-link" id="profile-tab" data-bs-toggle="tab" data-bs-target="#profile-pane"><i class="bi bi-person-gear"></i> Profile & Skills Editor</button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" id="cheatsheet-tab" data-bs-toggle="tab" data-bs-target="#cheatsheet-pane"><i class="bi bi-terminal"></i> CLI Command Runner</button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" id="bookmarklet-tab" data-bs-toggle="tab" data-bs-target="#bookmarklet-pane"><i class="bi bi-bookmark-star"></i> Bookmarklet</button>
         </li>
     </ul>
 
@@ -447,8 +470,7 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
         
         <!-- DASHBOARD PANE -->
         <div class="tab-pane fade show active" id="dashboard-pane">
-            <div class="row g-3 mb-4" id="stats-cards-container">
-                <!-- Stats loaded dynamically -->
+            <div class="row g-3 mb-4">
                 <div class="col-md-3">
                     <div class="stat-card">
                         <div class="text-muted small">Total Tracked Jobs</div>
@@ -478,9 +500,9 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
             <div class="row g-3">
                 <div class="col-md-8">
                     <div class="card border-0 shadow-sm mb-4">
-                        <div class="card-header bg-white fw-bold d-flex justify-content-between align-items-center">
+                        <div class="card-header bg-white fw-bold d-flex justify-content-between align-items-center py-3">
                             <span><i class="bi bi-star-fill text-warning"></i> High-Score Saved Opportunities</span>
-                            <button class="btn btn-sm btn-outline-primary" onclick="triggerQuickCommand('analyze', [])">Run Match Analyzer</button>
+                            <button class="btn btn-sm btn-outline-primary" onclick="triggerQuickCommand('analyze', [])"><i class="bi bi-cpu"></i> Re-Score Jobs</button>
                         </div>
                         <div class="card-body p-0">
                             <div class="table-responsive">
@@ -506,7 +528,7 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
 
                 <div class="col-md-4">
                     <div class="card border-0 shadow-sm mb-4">
-                        <div class="card-header bg-white fw-bold">
+                        <div class="card-header bg-white fw-bold py-3">
                             <i class="bi bi-pie-chart-fill text-primary"></i> Application Status Breakdown
                         </div>
                         <div class="card-body">
@@ -519,34 +541,10 @@ HTML_APP_TEMPLATE = """<!DOCTYPE html>
             </div>
         </div>
 
-        <!-- CHEAT SHEET & COMMAND EXECUTOR PANE -->
-        <div class="tab-pane fade" id="cheatsheet-pane">
-            <div class="row">
-                <div class="col-md-7">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h5 class="fw-bold mb-0"><i class="bi bi-journal-code"></i> CLI Command Cheat Sheet</h5>
-                        <input type="text" id="cmd-search-input" class="form-control form-control-sm w-50" placeholder="🔍 Search commands (e.g., fetch, tailor, backup)..." onkeyup="filterCommands()">
-                    </div>
-
-                    <div id="commands-accordion">
-                        <!-- Command categories loaded dynamically -->
-                    </div>
-                </div>
-
-                <!-- Live Command Output Terminal -->
-                <div class="col-md-5">
-                    <div class="card border-0 shadow-sm sticky-top" style="top: 1rem;">
-                        <div class="card-header bg-dark text-white fw-bold d-flex justify-content-between align-items-center">
-                            <span><i class="bi bi-terminal-fill text-success"></i> Terminal Output Console</span>
-                            <button class="btn btn-sm btn-outline-secondary text-white" onclick="clearTerminal()">Clear</button>
-                        </div>
-                        <div class="card-body p-2 bg-dark">
-                            <div class="terminal-box" id="terminal-output">
-Ready. Select a CLI command on the left and click "Run Command" to view direct output here.
-                            </div>
-                        </div>
-                    </div>
-                </div>
+        <!-- KANBAN BOARD PANE -->
+        <div class="tab-pane fade" id="kanban-pane">
+            <div class="row g-3" id="kanban-board-container">
+                <!-- Columns loaded dynamically -->
             </div>
         </div>
 
@@ -584,10 +582,99 @@ Ready. Select a CLI command on the left and click "Run Command" to view direct o
             </div>
         </div>
 
+        <!-- PROFILE & SKILLS EDITOR PANE -->
+        <div class="tab-pane fade" id="profile-pane">
+            <div class="card border-0 shadow-sm max-w-800 mx-auto">
+                <div class="card-header bg-white fw-bold py-3">
+                    <i class="bi bi-person-gear text-primary"></i> Edit Candidate Profile & Target Skills (config.yaml)
+                </div>
+                <div class="card-body">
+                    <form id="profile-editor-form" onsubmit="saveProfileForm(event)">
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Target Job Titles (comma separated)</label>
+                                <input type="text" class="form-control" id="prof-titles">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Years of Experience</label>
+                                <input type="number" class="form-control" id="prof-exp">
+                            </div>
+                        </div>
+
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Required Skills (comma separated)</label>
+                                <textarea class="form-control" id="prof-req-skills" rows="3"></textarea>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Preferred Skills (comma separated)</label>
+                                <textarea class="form-control" id="prof-pref-skills" rows="3"></textarea>
+                            </div>
+                        </div>
+
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Target Locations (comma separated)</label>
+                                <input type="text" class="form-control" id="prof-locations">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Target Minimum Salary (USD)</label>
+                                <input type="number" class="form-control" id="prof-salary">
+                            </div>
+                        </div>
+
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Excluded Companies (comma separated)</label>
+                                <input type="text" class="form-control" id="prof-ex-companies">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Excluded Job Titles (comma separated)</label>
+                                <input type="text" class="form-control" id="prof-ex-titles">
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary"><i class="bi bi-save-fill"></i> Save Profile Configuration</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- CHEAT SHEET & COMMAND EXECUTOR PANE -->
+        <div class="tab-pane fade" id="cheatsheet-pane">
+            <div class="row">
+                <div class="col-md-7">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="fw-bold mb-0"><i class="bi bi-journal-code"></i> CLI Command Cheat Sheet</h5>
+                        <input type="text" id="cmd-search-input" class="form-control form-control-sm w-50" placeholder="🔍 Search commands (e.g., fetch, tailor, backup)..." onkeyup="filterCommands()">
+                    </div>
+
+                    <div id="commands-accordion">
+                        <!-- Command categories loaded dynamically -->
+                    </div>
+                </div>
+
+                <!-- Live Command Output Terminal -->
+                <div class="col-md-5">
+                    <div class="card border-0 shadow-sm sticky-top" style="top: 1rem;">
+                        <div class="card-header bg-dark text-white fw-bold d-flex justify-content-between align-items-center">
+                            <span><i class="bi bi-terminal-fill text-success"></i> Terminal Output Console</span>
+                            <button class="btn btn-sm btn-outline-secondary text-white" onclick="clearTerminal()">Clear</button>
+                        </div>
+                        <div class="card-body p-2 bg-dark">
+                            <div class="terminal-box" id="terminal-output">
+Ready. Select a CLI command on the left and click "Run Command" to view direct output here.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- BOOKMARKLET PANE -->
         <div class="tab-pane fade" id="bookmarklet-pane">
             <div class="card border-0 shadow-sm max-w-700 mx-auto">
-                <div class="card-header bg-white fw-bold">
+                <div class="card-header bg-white fw-bold py-3">
                     <i class="bi bi-bookmark-star-fill text-warning"></i> 1-Click Chrome Bookmarklet Setup
                 </div>
                 <div class="card-body">
@@ -625,13 +712,43 @@ Ready. Select a CLI command on the left and click "Run Command" to view direct o
     </div>
 </div>
 
+<!-- JOB DETAILS MODAL -->
+<div class="modal fade" id="jobDetailsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-light">
+                <h5 class="modal-title fw-bold" id="modal-job-title">Job Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="modal-job-body">
+                Loading details...
+            </div>
+            <div class="modal-footer bg-light d-flex justify-content-between">
+                <div>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="openJobFolderInExplorer()"><i class="bi bi-folder2-open"></i> Open Desktop Folder</button>
+                    <button class="btn btn-sm btn-outline-primary" id="modal-job-url-btn" onclick="openJobUrlExternal()"><i class="bi bi-box-arrow-up-right"></i> Open Link</button>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-primary" onclick="triggerModalAction('tailor')"><i class="bi bi-file-word"></i> Tailor DOCX</button>
+                    <button class="btn btn-sm btn-success" onclick="triggerModalAction('mark-applied')"><i class="bi bi-check-circle"></i> Mark Applied</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
     let metadataCommands = [];
+    let currentModalJobId = null;
+    let currentModalJobUrl = null;
+
+    const KANBAN_STATUSES = ["Saved", "Reviewing", "Ready to apply", "Applied", "Interviewing", "Offer", "Rejected"];
 
     document.addEventListener("DOMContentLoaded", function() {
         loadAllData();
         loadCommandsMetadata();
+        fetchProfile();
     });
 
     function loadAllData() {
@@ -666,7 +783,7 @@ Ready. Select a CLI command on the left and click "Run Command" to view direct o
                             <tr>
                                 <td><strong>#${j.id}</strong></td>
                                 <td><span class="badge bg-success badge-score">${Math.round(j.match_score)}</span></td>
-                                <td>${escapeHtml(j.title)}</td>
+                                <td><a href="#" class="text-decoration-none fw-bold" onclick="showJobDetails('${j.id}')">${escapeHtml(j.title)}</a></td>
                                 <td>${escapeHtml(j.company)}</td>
                                 <td><small class="text-muted">${j.source_platform}</small></td>
                                 <td>
@@ -676,43 +793,207 @@ Ready. Select a CLI command on the left and click "Run Command" to view direct o
                         `;
                     });
                 }
-            })
-            .catch(err => console.error("Error fetching stats:", err));
+            });
     }
 
     function fetchJobs() {
         fetch('/api/jobs')
             .then(res => res.json())
             .then(jobs => {
-                const tbody = document.querySelector('#all-jobs-table tbody');
-                tbody.innerHTML = '';
-                if (!jobs || jobs.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-muted">No jobs tracked yet. Run "fetch-jobs" or use the 1-click Chrome bookmarklet!</td></tr>';
-                    return;
-                }
-                jobs.forEach(j => {
-                    const scoreBadge = j.match_score ? `<span class="badge bg-success badge-score">${Math.round(j.match_score)}</span>` : '<span class="badge bg-secondary">-</span>';
-                    tbody.innerHTML += `
-                        <tr>
-                            <td><strong>#${j.id}</strong></td>
-                            <td><span class="badge bg-info text-dark">${j.status}</span></td>
-                            <td>${scoreBadge}</td>
-                            <td>${escapeHtml(j.title)}</td>
-                            <td>${escapeHtml(j.company)}</td>
-                            <td><small class="text-muted">${j.source_platform}</small></td>
-                            <td>${j.is_duplicate ? '<span class="text-danger">Yes</span>' : ''}</td>
-                            <td>
-                                <div class="btn-group btn-group-sm">
-                                    <button class="btn btn-outline-primary" title="Tailor Resume & Cover Letter" onclick="triggerQuickCommand('tailor', ['${j.id}'])"><i class="bi bi-file-earmark-word"></i> Tailor</button>
-                                    <button class="btn btn-outline-success" title="Mark Applied" onclick="triggerQuickCommand('mark-applied', ['${j.id}', '--confirm'])"><i class="bi bi-check-circle"></i> Applied</button>
-                                    <button class="btn btn-outline-secondary" title="Suggest Answer" onclick="promptSuggestAnswer('${j.id}')"><i class="bi bi-chat-quote"></i> Q&A</button>
-                                </div>
-                            </td>
-                        </tr>
-                    `;
-                });
-            })
-            .catch(err => console.error("Error fetching jobs:", err));
+                renderAllJobsTable(jobs);
+                renderKanbanBoard(jobs);
+            });
+    }
+
+    function renderAllJobsTable(jobs) {
+        const tbody = document.querySelector('#all-jobs-table tbody');
+        tbody.innerHTML = '';
+        if (!jobs || jobs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-muted">No jobs tracked yet. Run "fetch-jobs" or use the 1-click Chrome bookmarklet!</td></tr>';
+            return;
+        }
+        jobs.forEach(j => {
+            const scoreBadge = j.match_score ? `<span class="badge bg-success badge-score">${Math.round(j.match_score)}</span>` : '<span class="badge bg-secondary">-</span>';
+            tbody.innerHTML += `
+                <tr>
+                    <td><strong>#${j.id}</strong></td>
+                    <td><span class="badge bg-info text-dark">${j.status}</span></td>
+                    <td>${scoreBadge}</td>
+                    <td><a href="#" class="text-decoration-none fw-semibold" onclick="showJobDetails('${j.id}')">${escapeHtml(j.title)}</a></td>
+                    <td>${escapeHtml(j.company)}</td>
+                    <td><small class="text-muted">${j.source_platform}</small></td>
+                    <td>${j.is_duplicate ? '<span class="text-danger">Yes</span>' : ''}</td>
+                    <td>
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-outline-secondary" onclick="showJobDetails('${j.id}')"><i class="bi bi-eye"></i> Details</button>
+                            <button class="btn btn-outline-primary" onclick="triggerQuickCommand('tailor', ['${j.id}'])"><i class="bi bi-file-word"></i> Tailor</button>
+                            <button class="btn btn-outline-success" onclick="triggerQuickCommand('mark-applied', ['${j.id}', '--confirm'])"><i class="bi bi-check-circle"></i> Applied</button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        });
+    }
+
+    function renderKanbanBoard(jobs) {
+        const container = document.getElementById('kanban-board-container');
+        container.innerHTML = '';
+
+        KANBAN_STATUSES.forEach(status => {
+            const statusJobs = (jobs || []).filter(j => j.status === status);
+            let cardsHtml = '';
+
+            statusJobs.forEach(j => {
+                const scoreBadge = j.match_score ? `<span class="badge bg-success ms-auto">${Math.round(j.match_score)}</span>` : '';
+                cardsHtml += `
+                    <div class="kanban-card" onclick="showJobDetails('${j.id}')">
+                        <div class="d-flex align-items-center mb-1">
+                            <strong class="text-dark fs-7">#${j.id}</strong>
+                            ${scoreBadge}
+                        </div>
+                        <div class="fw-bold text-primary text-truncate mb-1" style="font-size:0.9rem;">${escapeHtml(j.title)}</div>
+                        <div class="text-muted small text-truncate mb-2">${escapeHtml(j.company)}</div>
+                        <div class="d-flex justify-content-between align-items-center border-top pt-2 mt-2">
+                            <small class="text-muted fs-8">${j.source_platform}</small>
+                            <select class="form-select form-select-sm py-0 px-1 fs-8" style="width: auto;" onclick="event.stopPropagation()" onchange="moveJobStatus('${j.id}', this.value)">
+                                ${KANBAN_STATUSES.map(s => `<option value="${s}" ${s === status ? 'selected' : ''}>${s}</option>`).join('')}
+                            </select>
+                        </div>
+                    </div>`;
+            });
+
+            container.innerHTML += `
+                <div class="col">
+                    <div class="kanban-col">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h6 class="fw-bold mb-0 text-dark">${status}</h6>
+                            <span class="badge bg-white text-dark border">${statusJobs.length}</span>
+                        </div>
+                        ${cardsHtml || '<div class="text-muted fs-8 text-center py-4">No jobs</div>'}
+                    </div>
+                </div>`;
+        });
+    }
+
+    function moveJobStatus(jobId, newStatus) {
+        fetch('/api/jobs/update-status', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({job_id: parseInt(jobId), status: newStatus})
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success') {
+                loadAllData();
+            }
+        });
+    }
+
+    function showJobDetails(jobId) {
+        currentModalJobId = jobId;
+        const modal = new bootstrap.Modal(document.getElementById('jobDetailsModal'));
+        document.getElementById('modal-job-title').innerText = `Loading Job #${jobId}...`;
+        document.getElementById('modal-job-body').innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>';
+        modal.show();
+
+        fetch(`/api/job-details?id=${jobId}`)
+            .then(res => res.json())
+            .then(j => {
+                currentModalJobUrl = j.job_url;
+                document.getElementById('modal-job-title').innerText = `Job #${j.id}: ${j.title} at ${j.company}`;
+                
+                const matchedBadges = (j.matched_skills || []).map(s => `<span class="badge bg-success-subtle text-success border border-success me-1 mb-1">${escapeHtml(s)}</span>`).join('');
+                const missingBadges = (j.missing_skills || []).map(s => `<span class="badge bg-danger-subtle text-danger border border-danger me-1 mb-1">${escapeHtml(s)}</span>`).join('');
+
+                document.getElementById('modal-job-body').innerHTML = `
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4"><strong>Status:</strong> <span class="badge bg-info text-dark">${j.status}</span></div>
+                        <div class="col-md-4"><strong>Match Score:</strong> <span class="badge bg-success">${j.match_score ? Math.round(j.match_score) + '/100' : 'N/A'}</span></div>
+                        <div class="col-md-4"><strong>Platform:</strong> ${j.source_platform}</div>
+                    </div>
+                    <div class="mb-3">
+                        <strong>Location:</strong> ${escapeHtml(j.location || 'Not specified')} | 
+                        <strong>Salary:</strong> ${escapeHtml(j.salary || 'Not specified')}
+                    </div>
+                    <div class="mb-3">
+                        <h6 class="fw-bold mb-1 text-success">Matched Skills</h6>
+                        <div>${matchedBadges || '<span class="text-muted small">None listed</span>'}</div>
+                    </div>
+                    <div class="mb-3">
+                        <h6 class="fw-bold mb-1 text-danger">Missing Skills / Keywords</h6>
+                        <div>${missingBadges || '<span class="text-muted small">None missing</span>'}</div>
+                    </div>
+                    <div class="mb-3">
+                        <h6 class="fw-bold mb-1">Job Description</h6>
+                        <div class="p-3 bg-light rounded border text-muted fs-7" style="max-height: 250px; overflow-y: auto; white-space: pre-wrap;">${escapeHtml(j.description || 'No description provided.')}</div>
+                    </div>
+                `;
+            });
+    }
+
+    function triggerModalAction(action) {
+        if (!currentModalJobId) return;
+        if (action === 'tailor') {
+            triggerQuickCommand('tailor', [currentModalJobId]);
+        } else if (action === 'mark-applied') {
+            triggerQuickCommand('mark-applied', [currentModalJobId, '--confirm']);
+        }
+        bootstrap.Modal.getInstance(document.getElementById('jobDetailsModal'))?.hide();
+    }
+
+    function openJobFolderInExplorer() {
+        if (!currentModalJobId) return;
+        fetch('/api/open-folder', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({job_id: parseInt(currentModalJobId)})
+        });
+    }
+
+    function openJobUrlExternal() {
+        if (currentModalJobUrl) {
+            window.open(currentModalJobUrl, '_blank');
+        }
+    }
+
+    function fetchProfile() {
+        fetch('/api/profile')
+            .then(res => res.json())
+            .then(p => {
+                document.getElementById('prof-titles').value = (p.target_titles || []).join(', ');
+                document.getElementById('prof-exp').value = p.years_experience || 0;
+                document.getElementById('prof-req-skills').value = (p.required_skills || []).join(', ');
+                document.getElementById('prof-pref-skills').value = (p.preferred_skills || []).join(', ');
+                document.getElementById('prof-locations').value = (p.locations || []).join(', ');
+                document.getElementById('prof-salary').value = p.salary_min || 120000;
+                document.getElementById('prof-ex-companies').value = (p.excluded_companies || []).join(', ');
+                document.getElementById('prof-ex-titles').value = (p.excluded_titles || []).join(', ');
+            });
+    }
+
+    function saveProfileForm(e) {
+        e.preventDefault();
+        const payload = {
+            target_titles: document.getElementById('prof-titles').value.split(',').map(s => s.trim()).filter(Boolean),
+            years_experience: parseInt(document.getElementById('prof-exp').value || 0),
+            required_skills: document.getElementById('prof-req-skills').value.split(',').map(s => s.trim()).filter(Boolean),
+            preferred_skills: document.getElementById('prof-pref-skills').value.split(',').map(s => s.trim()).filter(Boolean),
+            locations: document.getElementById('prof-locations').value.split(',').map(s => s.trim()).filter(Boolean),
+            salary_min: parseInt(document.getElementById('prof-salary').value || 0),
+            excluded_companies: document.getElementById('prof-ex-companies').value.split(',').map(s => s.trim()).filter(Boolean),
+            excluded_titles: document.getElementById('prof-ex-titles').value.split(',').map(s => s.trim()).filter(Boolean),
+        };
+
+        fetch('/api/profile', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        })
+        .then(res => res.json())
+        .then(data => {
+            alert('✅ Profile configuration saved to config.yaml!');
+            loadAllData();
+        });
     }
 
     function loadCommandsMetadata() {
@@ -827,17 +1108,9 @@ Ready. Select a CLI command on the left and click "Run Command" to view direct o
     }
 
     function triggerQuickCommand(cmd, args) {
-        // Switch to cheatsheet tab to view terminal
         const tabEl = document.getElementById('cheatsheet-tab');
         bootstrap.Tab.getInstance(tabEl)?.show() || new bootstrap.Tab(tabEl).show();
         executeCommandOnServer(cmd, args);
-    }
-
-    function promptSuggestAnswer(jobId) {
-        const q = prompt("Enter the application question to draft an answer for:");
-        if (q && q.trim()) {
-            triggerQuickCommand('suggest-answer', [jobId, q.trim()]);
-        }
     }
 
     function executeCommandOnServer(cmd, args) {
@@ -852,7 +1125,7 @@ Ready. Select a CLI command on the left and click "Run Command" to view direct o
         .then(res => res.json())
         .then(data => {
             term.innerText = `$ ${data.command}\n\n${data.output}`;
-            loadAllData(); // Refresh UI metrics and job rows
+            loadAllData();
         })
         .catch(err => {
             term.innerText = `Error executing command: ${err}`;
@@ -908,6 +1181,8 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         url_path = urllib.parse.urlparse(self.path).path
+        query_params = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+
         try:
             if url_path in ("/", "/dashboard", "/cheat-sheet", "/index.html"):
                 self.send_response(200)
@@ -916,13 +1191,27 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(HTML_APP_TEMPLATE.encode("utf-8"))
 
+            elif url_path == "/api/calendar.ics":
+                settings = get_settings()
+                SessionLocal = init_db(settings.database_path)
+                session = SessionLocal()
+                try:
+                    ics_content = generate_ics_calendar(session)
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/calendar; charset=utf-8")
+                    self.send_header("Content-Disposition", 'attachment; filename="job_search_schedule.ics"')
+                    self._set_cors_headers()
+                    self.end_headers()
+                    self.wfile.write(ics_content.encode("utf-8"))
+                finally:
+                    session.close()
+
             elif url_path == "/api/stats":
                 settings = get_settings()
                 SessionLocal = init_db(settings.database_path)
                 session = SessionLocal()
                 try:
                     summary = generate_pipeline_summary(session)
-                    # Convert objects to lightweight dicts
                     high_scores = [
                         {"id": j.id, "title": j.title, "company": j.company, "match_score": j.match_score, "source_platform": j.source_platform}
                         for j in summary["high_score_jobs"]
@@ -957,7 +1246,7 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
                 SessionLocal = init_db(settings.database_path)
                 session = SessionLocal()
                 try:
-                    jobs = list_jobs(session, limit=100)
+                    jobs = list_jobs(session, limit=200)
                     job_list = [
                         {
                             "id": j.id,
@@ -978,6 +1267,60 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
                     self.wfile.write(json.dumps(job_list).encode("utf-8"))
                 finally:
                     session.close()
+
+            elif url_path == "/api/job-details":
+                job_id_str = (query_params.get("id") or ["0"])[0]
+                job_id = int(job_id_str)
+                settings = get_settings()
+                SessionLocal = init_db(settings.database_path)
+                session = SessionLocal()
+                try:
+                    j = get_job(session, job_id)
+                    if not j:
+                        self.send_error(404, "Job not found")
+                        return
+                    matched_list = [s.strip() for s in (j.matched_skills or "").split(",") if s.strip()]
+                    missing_list = [s.strip() for s in (j.missing_skills or "").split(",") if s.strip()]
+                    payload = {
+                        "id": j.id,
+                        "title": j.title,
+                        "company": j.company,
+                        "status": j.status,
+                        "match_score": j.match_score,
+                        "location": j.location,
+                        "salary": j.salary,
+                        "source_platform": j.source_platform,
+                        "job_url": j.job_url,
+                        "description": j.description,
+                        "matched_skills": matched_list,
+                        "missing_skills": missing_list,
+                        "notes": j.notes or j.user_notes,
+                    }
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self._set_cors_headers()
+                    self.end_headers()
+                    self.wfile.write(json.dumps(payload).encode("utf-8"))
+                finally:
+                    session.close()
+
+            elif url_path == "/api/profile":
+                profile = load_candidate_profile()
+                payload = {
+                    "target_titles": profile.target_titles,
+                    "required_skills": profile.required_skills,
+                    "preferred_skills": profile.preferred_skills,
+                    "years_experience": profile.years_experience,
+                    "locations": profile.locations,
+                    "salary_min": profile.salary_min,
+                    "excluded_companies": profile.excluded_companies,
+                    "excluded_titles": profile.excluded_titles,
+                }
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors_headers()
+                self.end_headers()
+                self.wfile.write(json.dumps(payload).encode("utf-8"))
 
             elif url_path == "/api/commands":
                 self.send_response(200)
@@ -1013,6 +1356,78 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
                 self._set_cors_headers()
                 self.end_headers()
                 self.wfile.write(json.dumps(res).encode("utf-8"))
+
+            elif url_path == "/api/jobs/update-status":
+                data = json.loads(body)
+                job_id = int(data.get("job_id", 0))
+                new_status = str(data.get("status") or "Saved")
+
+                settings = get_settings()
+                SessionLocal = init_db(settings.database_path)
+                session = SessionLocal()
+                try:
+                    update_status(session, job_id, new_status, confirm_applied=True)
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self._set_cors_headers()
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"status": "success", "job_id": job_id, "new_status": new_status}).encode("utf-8"))
+                finally:
+                    session.close()
+
+            elif url_path == "/api/open-folder":
+                data = json.loads(body)
+                job_id = int(data.get("job_id", 0))
+                settings = get_settings()
+                SessionLocal = init_db(settings.database_path)
+                session = SessionLocal()
+                try:
+                    j = get_job(session, job_id)
+                    if j:
+                        folder = application_folder(settings.jobs_applied_folder, j.company, j.title)
+                        folder.mkdir(parents=True, exist_ok=True)
+                        if sys.platform == "win32":
+                            subprocess.Popen(["explorer", str(folder)])
+                        self.send_response(200)
+                        self.send_header("Content-Type", "application/json")
+                        self._set_cors_headers()
+                        self.end_headers()
+                        self.wfile.write(json.dumps({"status": "success", "folder": str(folder)}).encode("utf-8"))
+                    else:
+                        self.send_error(404, "Job not found")
+                finally:
+                    session.close()
+
+            elif url_path == "/api/profile":
+                data = json.loads(body)
+                current_p = load_candidate_profile()
+                updated_p = CandidateProfile(
+                    target_titles=data.get("target_titles", current_p.target_titles),
+                    industries=current_p.industries,
+                    required_skills=data.get("required_skills", current_p.required_skills),
+                    preferred_skills=data.get("preferred_skills", current_p.preferred_skills),
+                    years_experience=int(data.get("years_experience", current_p.years_experience)),
+                    locations=data.get("locations", current_p.locations),
+                    work_modes=current_p.work_modes,
+                    salary_min=data.get("salary_min", current_p.salary_min),
+                    salary_max=current_p.salary_max,
+                    salary_currency=current_p.salary_currency,
+                    employment_types=current_p.employment_types,
+                    work_authorization=current_p.work_authorization,
+                    excluded_companies=data.get("excluded_companies", current_p.excluded_companies),
+                    excluded_titles=data.get("excluded_titles", current_p.excluded_titles),
+                    excluded_skills=current_p.excluded_skills,
+                    excluded_locations=current_p.excluded_locations,
+                    master_resume_path=current_p.master_resume_path,
+                    master_resumes=current_p.master_resumes,
+                    cover_letter_template_path=current_p.cover_letter_template_path,
+                )
+                save_candidate_profile(updated_p)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self._set_cors_headers()
+                self.end_headers()
+                self.wfile.write(json.dumps({"status": "success", "message": "Profile updated"}).encode("utf-8"))
 
             elif url_path == "/capture":
                 data = json.loads(body)
