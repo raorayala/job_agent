@@ -20,10 +20,12 @@ processed_emails (gmail_message_id)
         │
         │ 1:N (logical; jobs also store gmail_message_id)
         ▼
-      jobs ◄─── contacts (job_id)
-        │  ◄─── interviews (job_id)
-        │  ◄─── activity_logs (job_id)
+      jobs ◄─── contacts (job_id) FK ON DELETE SET NULL
+        │  ◄─── interviews (job_id) FK ON DELETE CASCADE
+        │  ◄─── activity_logs (job_id) FK ON DELETE SET NULL
 ```
+
+SQLite connections enable `PRAGMA foreign_keys=ON`. On migrate, legacy child tables without FK metadata are rebuilt (orphans cleaned/nulled first). Migration failures are logged and raised (not silently ignored).
 
 ## 3. Table: `jobs`
 
@@ -126,6 +128,8 @@ Stored as display strings matching `ApplicationStatus`:
 | `DATABASE_PATH` | SQLite file |
 | `LOG_LEVEL` | Logging verbosity |
 | `CONFIG_PATH` | Override config.yaml |
+| `WEB_CONSOLE_TOKEN` | Local Web Console API token (or auto-file under `data/web_console_token`) |
+| `IMAP_*` | Optional Outlook/Hotmail IMAP credentials (never commit real values) |
 
 ## 8. In-memory domain objects
 

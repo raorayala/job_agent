@@ -3,9 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
-import subprocess
-import sys
 import urllib.parse
 from datetime import date, datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -61,6 +58,20 @@ from job_agent.resume_optimize import (
     update_suggestion,
 )
 from job_agent.resume_parser import extract_resume_text
+from job_agent.services.cli_runner import execute_cli_command
+from job_agent.services.web_security import (
+    ROLE_HEADER,
+    TOKEN_HEADER,
+    assert_admin_cli_allowed,
+    cors_allow_origin,
+    extract_request_role,
+    extract_request_token,
+    is_valid_console_token,
+    requires_admin_role,
+    requires_console_token,
+    resolve_console_token,
+    validate_readonly_sql,
+)
 from job_agent.system_health import get_system_health
 
 logger = get_logger(__name__)
@@ -248,46 +259,15 @@ CLI_COMMANDS_METADATA = [
 ]
 
 
-def execute_cli_command(cmd_name: str, raw_args: list[str]) -> dict[str, Any]:
-    """Execute python -m job_agent <cmd_name> <args> in a subprocess and return output."""
-    env = dict(os.environ)
-    env["PYTHONUTF8"] = "1"
-    env["PYTHONIOENCODING"] = "utf-8"
+def run_allowlisted_cli(cmd_name: str, raw_args: list[str]) -> dict[str, Any]:
+    """Execute an allowlisted `python -m job_agent` command for the Web Console."""
+    return execute_cli_command(cmd_name, raw_args, command_metadata=CLI_COMMANDS_METADATA)
 
-    cmd = [sys.executable, "-m", "job_agent", cmd_name] + raw_args
-    try:
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=120,
-            env=env,
-        )
-        stdout = proc.stdout or ""
-        stderr = proc.stderr or ""
-        output = (stdout + ("\n" + stderr if stderr else "")).strip()
-        return {
-            "success": proc.returncode == 0,
-            "exit_code": proc.returncode,
-            "output": output or "(Command produced no console output)",
-            "command": " ".join(cmd),
-        }
-    except subprocess.TimeoutExpired:
-        return {
-            "success": False,
-            "exit_code": -1,
-            "output": "Error: Command execution timed out after 120 seconds.",
-            "command": " ".join(cmd),
-        }
-    except Exception as exc:
-        return {
-            "success": False,
-            "exit_code": -1,
-            "output": f"Error executing command: {exc}",
-            "command": " ".join(cmd),
-        }
+
+def render_app_html() -> str:
+    """Inject the local console API token into the dashboard HTML (same-origin only)."""
+    token = resolve_console_token()
+    return HTML_APP_TEMPLATE.replace("__CONSOLE_API_TOKEN__", token)
 
 
 HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
@@ -754,6 +734,46 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
         #app-sidebar .sidebar-nav-btn.active .step-num {
             background: rgba(255,255,255,0.22);
         }
+        #app-sidebar .sidebar-ingest-label {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            width: calc(100% - 0.9rem);
+            margin: 0.2rem 0.45rem 0.1rem;
+            padding: 0.45rem 0.65rem;
+            color: #e2e8f0;
+            font-size: 0.84rem;
+            font-weight: 600;
+        }
+        #app-sidebar .sidebar-ingest-label .step-num {
+            width: 1.25rem;
+            height: 1.25rem;
+            border-radius: 999px;
+            background: rgba(148, 163, 184, 0.2);
+            color: inherit;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+        #app-sidebar .sidebar-submenu {
+            margin: 0 0.45rem 0.4rem 1.05rem;
+            padding: 0.15rem 0 0.2rem 0.45rem;
+            border-left: 2px solid #334155;
+        }
+        #app-sidebar .sidebar-submenu .sidebar-nav-btn {
+            width: calc(100% - 0.35rem);
+            margin: 0.08rem 0.1rem;
+            padding: 0.42rem 0.55rem;
+            font-size: 0.8rem;
+        }
+        #app-sidebar .sidebar-submenu .sidebar-nav-btn .step-num {
+            width: 1.15rem;
+            height: 1.15rem;
+            font-size: 0.62rem;
+        }
         #app-sidebar .nav-ico {
             width: 1.1rem;
             text-align: center;
@@ -893,10 +913,10 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
     </div>
     <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
         <span class="badge bg-light text-dark" id="console-mode-badge">User Mode</span>
-        <button class="btn btn-sm btn-primary" onclick="loadAllData()"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
-        <button class="btn btn-sm btn-header-secondary user-only" onclick="openImportUrlModal()"><i class="bi bi-link-45deg"></i> Import URL</button>
-        <a href="/capture" class="btn btn-sm btn-header-tertiary user-only" title="Install or re-install the 1-click Chrome bookmarklet"><i class="bi bi-bookmark-star"></i> Bookmarklet</a>
-        <a href="/api/calendar.ics" class="btn btn-sm btn-header-tertiary user-only"><i class="bi bi-calendar-event"></i> Calendar</a>
+        <div class="d-flex align-items-center gap-1 header-utils">
+            <button class="btn btn-sm btn-primary" onclick="loadAllData()" title="Refresh dashboard data"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
+            <a href="/capture" class="btn btn-sm btn-header-tertiary user-only" title="Install or re-install the 1-click Chrome bookmarklet"><i class="bi bi-bookmark-star"></i> Bookmarklet</a>
+        </div>
         <button type="button" class="btn btn-sm btn-header-tertiary" id="console-mode-home" onclick="showModuleGate()" title="Return to USER / ADMIN module chooser">
             <i class="bi bi-grid-1x2"></i> Switch Module
         </button>
@@ -927,7 +947,14 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
             <div class="sidebar-group">
                 <div class="sidebar-group-title"><i class="bi bi-window-sidebar me-1"></i> Web Tasks</div>
                 <button type="button" class="sidebar-nav-btn active" id="dashboard-tab" data-pane="dashboard-pane" onclick="navigateTo('dashboard-tab')"><span class="step-num">1</span><i class="bi bi-speedometer2 nav-ico"></i> Dashboard</button>
-                <button type="button" class="sidebar-nav-btn" id="discovery-tab" data-pane="discovery-pane" onclick="navigateTo('discovery-tab')"><span class="step-num">2</span><i class="bi bi-compass nav-ico"></i> Discover Jobs</button>
+                <div class="sidebar-ingest-label" id="job-ingestion-label" aria-label="Job Ingestion group">
+                    <span class="step-num">2</span><i class="bi bi-inbox nav-ico"></i> Job Ingestion
+                </div>
+                <div class="sidebar-submenu" id="job-ingestion-submenu" role="group" aria-label="Job Ingestion">
+                    <button type="button" class="sidebar-nav-btn" id="email-sync-nav" onclick="openEmailSyncFromNav()"><i class="bi bi-envelope-at nav-ico"></i> Sync Email Alerts</button>
+                    <button type="button" class="sidebar-nav-btn" id="import-url-nav" onclick="openImportUrlFromNav()"><i class="bi bi-link-45deg nav-ico"></i> Automated Job Import from URL</button>
+                    <button type="button" class="sidebar-nav-btn" id="discovery-tab" data-pane="discovery-pane" onclick="navigateTo('discovery-tab')"><i class="bi bi-compass nav-ico"></i> Discover Jobs</button>
+                </div>
                 <button type="button" class="sidebar-nav-btn" id="review-tab" data-pane="review-pane" onclick="navigateTo('review-tab')"><span class="step-num">3</span><i class="bi bi-file-earmark-check nav-ico"></i> Review &amp; Optimize</button>
                 <button type="button" class="sidebar-nav-btn" id="auto-apply-tab" data-pane="auto-apply-pane" onclick="navigateTo('auto-apply-tab')"><span class="step-num">4</span><i class="bi bi-send-check nav-ico"></i> Auto Apply</button>
                 <button type="button" class="sidebar-nav-btn" id="linkedin-tab" data-pane="linkedin-pane" onclick="navigateTo('linkedin-tab')"><span class="step-num">5</span><i class="bi bi-linkedin nav-ico"></i> LinkedIn Optimization</button>
@@ -997,13 +1024,13 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
                             </button>
                         </div>
                         <div class="col-md-6 col-xl-3">
-                            <button type="button" class="action-tile" onclick="openEmailSyncModal()">
+                            <button type="button" class="action-tile" onclick="openEmailSyncFromNav()">
                                 <span class="action-title"><i class="bi bi-envelope-at me-1"></i> Sync Email Alerts</span>
                                 <span class="action-sub">Gmail + Hotmail / Outlook</span>
                             </button>
                         </div>
                         <div class="col-md-6 col-xl-3">
-                            <button type="button" class="action-tile" onclick="openImportUrlModal()">
+                            <button type="button" class="action-tile" onclick="openImportUrlFromNav()">
                                 <span class="action-title"><i class="bi bi-link-45deg me-1"></i> Import Job URL</span>
                                 <span class="action-sub">Paste a listing link</span>
                             </button>
@@ -1166,11 +1193,11 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
             </div>
         </div>
 
-        <!-- JOB DISCOVERY PANE (USER Web Tasks step 2) -->
+        <!-- JOB DISCOVERY PANE (USER Web Tasks · Job Ingestion step 2) -->
         <div class="tab-pane fade user-only" id="discovery-pane">
             <div class="page-title-bar">
                 <h2><i class="bi bi-compass text-primary"></i> Discover Jobs</h2>
-                <span class="badge bg-primary-subtle text-primary">Web Tasks · Step 2</span>
+                <span class="badge bg-primary-subtle text-primary">Job Ingestion · Step 2</span>
             </div>
             <div class="card border-0 shadow-sm mb-4">
                 <div class="card-header bg-white fw-bold py-3">
@@ -1180,9 +1207,14 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
                     <p class="text-muted small mb-3">Select the job sites you want to search, then click <strong>Find Jobs Now</strong>. Each selected platform returns up to <strong>3 recent jobs</strong> (posted in the last 14 days). The top 3 recommended platforms are pre-selected.</p>
                     <div class="d-flex flex-wrap gap-2 mb-3">
                         <button type="button" class="btn btn-sm btn-outline-primary" onclick="selectRecommendedPlatforms()"><i class="bi bi-star-fill"></i> Top 3 Recommended</button>
-                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="selectAllPlatforms(true)"><i class="bi bi-check2-all"></i> Select All</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="selectAllPlatforms(true)"><i class="bi bi-check2-all"></i> Select Visible</button>
                         <button type="button" class="btn btn-sm btn-outline-secondary" onclick="selectAllPlatforms(false)"><i class="bi bi-x-lg"></i> Clear All</button>
+                        <div class="form-check form-switch ms-auto">
+                            <input class="form-check-input" type="checkbox" id="show-experimental-platforms" onchange="toggleExperimentalPlatforms(this.checked)">
+                            <label class="form-check-label small" for="show-experimental-platforms">Show experimental boards</label>
+                        </div>
                     </div>
+                    <p class="small text-muted mb-2" id="experimental-platforms-hint">Experimental boards (LinkedIn, Glassdoor, …) often return zero when blocked — leave them off unless you need them.</p>
                     <div class="row row-cols-2 row-cols-md-5 g-2 mb-3" id="top-10-platforms-grid">
                         <!-- Platform checkboxes generated dynamically -->
                     </div>
@@ -1431,7 +1463,12 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
         <div class="tab-pane fade user-only" id="kanban-pane">
             <div class="page-title-bar">
                 <h2><i class="bi bi-kanban text-primary"></i> Application Board</h2>
-                <span class="badge bg-primary-subtle text-primary">Web Tasks · Step 6</span>
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <a href="/api/calendar.ics" class="btn btn-sm btn-outline-primary" title="Download interview follow-ups as .ics calendar">
+                        <i class="bi bi-calendar-event"></i> .ics Calendar
+                    </a>
+                    <span class="badge bg-primary-subtle text-primary">Web Tasks · Step 6</span>
+                </div>
             </div>
             <div class="row g-3" id="kanban-board-container">
                 <!-- Columns loaded dynamically -->
@@ -1941,6 +1978,19 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
     let progressHideTimer = null;
     let progressStartedAt = 0;
     const PROGRESS_MIN_VISIBLE_MS = 1500;
+    const CONSOLE_API_TOKEN = "__CONSOLE_API_TOKEN__";
+    const _nativeFetch = window.fetch.bind(window);
+    window.fetch = function(input, init) {
+        const opts = init ? {...init} : {};
+        const headers = new Headers(opts.headers || {});
+        if (CONSOLE_API_TOKEN && CONSOLE_API_TOKEN !== "__CONSOLE_API_TOKEN__") {
+            headers.set('X-Console-Token', CONSOLE_API_TOKEN);
+        }
+        const role = document.body.classList.contains('console-mode-admin') ? 'admin' : 'user';
+        headers.set('X-Console-Role', role);
+        opts.headers = headers;
+        return _nativeFetch(input, opts);
+    };
 
     const KANBAN_STATUSES = ["Imported", "Analyzed", "Resume draft ready", "Awaiting review", "Approved", "Applied", "Interviewing", "Offer", "Rejected"];
     const TOP_10 = ["indeed", "linkedin", "glassdoor", "monster", "ziprecruiter", "careerbuilder", "simplyhired", "dice", "wellfound", "google_jobs"];
@@ -2038,10 +2088,23 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
     const BOOKMARKLET_INSTALLED_KEY = 'job_agent_bookmarklet_installed';
     const CONSOLE_MODE_KEY = 'job_agent_console_mode';
     const MODULE_ENTERED_KEY = 'job_agent_module_entered';
+    const ACTIVE_JOB_KEY = 'job_agent_active_job_id';
+    const SHOW_EXPERIMENTAL_PLATFORMS_KEY = 'job_agent_show_experimental_platforms';
     const USER_TAB_IDS = ['dashboard-tab', 'discovery-tab', 'review-tab', 'auto-apply-tab', 'linkedin-tab', 'kanban-tab', 'cls-tab'];
     const ADMIN_TAB_IDS = ['admin-home-tab', 'db-tab', 'profile-tab', 'cheatsheet-tab'];
     let currentOptimizeBundle = null;
     let currentAutoApplyJobId = null;
+
+    function getActiveJobId() {
+        return localStorage.getItem(ACTIVE_JOB_KEY) || currentReviewJobId || currentAutoApplyJobId || '';
+    }
+
+    function setActiveJobId(jobId) {
+        const id = jobId ? String(jobId) : '';
+        if (id) localStorage.setItem(ACTIVE_JOB_KEY, id);
+        else localStorage.removeItem(ACTIVE_JOB_KEY);
+        currentReviewJobId = id || null;
+    }
 
     function showModuleGate() {
         document.body.classList.add('module-gate-open');
@@ -2100,18 +2163,28 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
     }
 
     function initConsoleMode() {
-        showModuleGate();
-        const stored = localStorage.getItem(CONSOLE_MODE_KEY);
-        if (stored === 'admin' || stored === 'user') {
-            applyConsoleMode(stored, false);
+        const storedMode = localStorage.getItem(CONSOLE_MODE_KEY);
+        const entered = localStorage.getItem(MODULE_ENTERED_KEY) === '1';
+
+        const finish = (mode) => {
+            const normalized = mode === 'admin' ? 'admin' : 'user';
+            applyConsoleMode(normalized, false);
+            if (entered) {
+                document.body.classList.remove('module-gate-open');
+                navigateTo(normalized === 'admin' ? 'admin-home-tab' : 'dashboard-tab');
+            } else {
+                showModuleGate();
+            }
+        };
+
+        if (storedMode === 'admin' || storedMode === 'user') {
+            finish(storedMode);
             return;
         }
         fetch('/api/console-settings')
             .then(res => res.json())
-            .then(settings => {
-                applyConsoleMode(settings.default_mode || 'user', false);
-            })
-            .catch(() => applyConsoleMode('user', false));
+            .then(settings => finish(settings.default_mode || 'user'))
+            .catch(() => finish('user'));
     }
 
     function navigateTo(tabId) {
@@ -2206,6 +2279,22 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
         navigateTo('discovery-tab');
     }
 
+    function setSidebarActive(btnId) {
+        document.querySelectorAll('#app-sidebar .sidebar-nav-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.id === btnId);
+        });
+    }
+
+    function openEmailSyncFromNav() {
+        setSidebarActive('email-sync-nav');
+        openEmailSyncModal();
+    }
+
+    function openImportUrlFromNav() {
+        setSidebarActive('import-url-nav');
+        openImportUrlModal();
+    }
+
     function openEmailSyncModal() {
         const modal = new bootstrap.Modal(document.getElementById('emailSyncModal'));
         const providerSel = document.getElementById('email-sync-provider');
@@ -2291,7 +2380,25 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
     }
 
     function selectAllPlatforms(checked) {
-        document.querySelectorAll('.platform-checkbox').forEach(cb => { cb.checked = checked; });
+        document.querySelectorAll('.platform-checkbox').forEach(cb => {
+            const card = cb.closest('.platform-card-wrap');
+            if (card && card.style.display === 'none') return;
+            cb.checked = checked;
+        });
+        updatePlatformSelectionUI();
+    }
+
+    function toggleExperimentalPlatforms(show) {
+        localStorage.setItem(SHOW_EXPERIMENTAL_PLATFORMS_KEY, show ? '1' : '0');
+        document.querySelectorAll('.platform-card-wrap[data-tier="experimental"]').forEach(el => {
+            el.style.display = show ? '' : 'none';
+            if (!show) {
+                const cb = el.querySelector('.platform-checkbox');
+                if (cb) cb.checked = false;
+            }
+        });
+        const hint = document.getElementById('experimental-platforms-hint');
+        if (hint) hint.style.display = show ? 'none' : '';
         updatePlatformSelectionUI();
     }
 
@@ -2300,21 +2407,26 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
         if (!grid) return;
         grid.innerHTML = '';
         TOP_10.forEach(p => {
-            const checked = DEFAULT_PLATFORMS.includes(p) ? 'checked' : '';
+            const isRecommended = DEFAULT_PLATFORMS.includes(p);
+            const checked = isRecommended ? 'checked' : '';
             const label = formatPlatformLabel(p);
-            const tierBadge = DEFAULT_PLATFORMS.includes(p)
+            const tier = isRecommended ? 'recommended' : 'experimental';
+            const tierBadge = isRecommended
                 ? '<span class="badge bg-success fs-9 mt-1">Recommended</span>'
                 : '<span class="badge bg-secondary fs-9 mt-1">Experimental</span>';
             grid.innerHTML += `
-                <div class="col">
-                    <label class="platform-card shadow-sm d-block mb-0 ${DEFAULT_PLATFORMS.includes(p) ? 'is-selected' : ''}" for="platform-cb-${p}">
+                <div class="col platform-card-wrap" data-tier="${tier}">
+                    <label class="platform-card shadow-sm d-block mb-0 ${isRecommended ? 'is-selected' : ''}" for="platform-cb-${p}">
                         <input type="checkbox" class="form-check-input platform-checkbox" id="platform-cb-${p}" value="${p}" ${checked} onchange="updatePlatformSelectionUI()">
                         <div class="fw-bold text-dark fs-8">${label}</div>
                         ${tierBadge}
                     </label>
                 </div>`;
         });
-        updatePlatformSelectionUI();
+        const showExperimental = localStorage.getItem(SHOW_EXPERIMENTAL_PLATFORMS_KEY) === '1';
+        const toggle = document.getElementById('show-experimental-platforms');
+        if (toggle) toggle.checked = showExperimental;
+        toggleExperimentalPlatforms(showExperimental);
     }
 
     function loadAllData() {
@@ -2777,23 +2889,36 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
     function populateReviewJobSelect(jobs) {
         const sel = document.getElementById('review-job-select');
         if (!sel) return;
+        const previous = getActiveJobId();
         sel.innerHTML = '<option value="">Select a job from list...</option>';
         (jobs || []).forEach(j => {
             sel.innerHTML += `<option value="${j.id}">#${j.id}: ${escapeHtml(j.title)} at ${escapeHtml(j.company)} (${j.status})</option>`;
         });
+        if (previous && Array.from(sel.options).some(o => o.value === String(previous))) {
+            sel.value = String(previous);
+            currentReviewJobId = previous;
+        }
     }
 
     function populateAutoApplyJobSelect(jobs) {
         const sel = document.getElementById('auto-apply-job-select');
         if (!sel) return;
+        const previous = getActiveJobId();
         sel.innerHTML = '<option value="">Select a job...</option>';
         (jobs || []).forEach(j => {
             sel.innerHTML += `<option value="${j.id}">#${j.id}: ${escapeHtml(j.title)} at ${escapeHtml(j.company)} (${j.status})</option>`;
         });
+        if (previous && Array.from(sel.options).some(o => o.value === String(previous))) {
+            sel.value = String(previous);
+            if (typeof loadAutoApplyEligibility === 'function') {
+                loadAutoApplyEligibility(previous);
+            }
+        }
     }
 
     function loadAutoApplyEligibility(jobId) {
         currentAutoApplyJobId = jobId || null;
+        if (jobId) setActiveJobId(jobId);
         const box = document.getElementById('auto-apply-eligibility');
         const btn = document.getElementById('btn-launch-auto-apply');
         const btnMark = document.getElementById('btn-launch-auto-apply-mark');
@@ -2926,6 +3051,7 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
     }
 
     function selectForReview(jobId) {
+        setActiveJobId(jobId);
         document.getElementById('review-job-select').value = jobId;
         loadJobForReview(jobId);
         switchTab('review-tab');
@@ -2936,7 +3062,7 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
             document.getElementById('resume-review-details').style.display = 'none';
             return;
         }
-        currentReviewJobId = jobId;
+        setActiveJobId(jobId);
         document.getElementById('resume-review-details').style.display = 'block';
 
         fetch(`/api/draft/get?job_id=${jobId}`)
@@ -3255,12 +3381,24 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
                 const count = data.jobs_recorded != null ? data.jobs_recorded : 0;
                 const searched = (data.platforms_searched || selectedPlatforms).map(formatPlatformLabel).join(', ');
                 finishProgress(`Search complete! Discovered ${count} jobs.`, true);
-                if (count === 0) {
-                    alert(`No jobs imported from selected platforms.\n\nSee "Last Platform Search Results" for per-site status.\n\nTip: Use Dice, ZipRecruiter, Indeed (recommended), Load Demo Jobs, or Import URL.`);
-                } else {
-                    alert(`✅ Platform Search Complete!\n\nDiscovered ${count} jobs from:\n${searched}\n\nRunning score analyzer next...`);
-                }
-                loadAllData();
+                return loadAllData().then(() => {
+                    if (count === 0) {
+                        alert(`No jobs imported from selected platforms.\n\nSee "Last Platform Search Results" for per-site status.\n\nTip: Use Dice, ZipRecruiter, Indeed (recommended), Load Demo Jobs, or Import URL.`);
+                        return;
+                    }
+                    // Prefer highest match score for the next review step.
+                    return fetchWithTimeout('/api/jobs').then(res => res.json()).then(jobs => {
+                        const ranked = (jobs || []).slice().sort((a, b) => (Number(b.match_score) || 0) - (Number(a.match_score) || 0));
+                        const top = ranked[0];
+                        if (top && top.id) {
+                            setActiveJobId(top.id);
+                            selectForReview(top.id);
+                            finishProgress(`Search complete! Opening Review for #${top.id} (${Math.round(Number(top.match_score) || 0)} match).`, true);
+                        } else {
+                            navigateTo('review-tab');
+                        }
+                    }).catch(() => navigateTo('review-tab'));
+                });
             };
             if ((data.jobs_recorded || 0) > 0) {
                 showProgress('Running score analyzer on discovered jobs...', 70);
@@ -3307,13 +3445,31 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
     }
 
     function moveJobStatus(jobId, newStatus) {
+        let confirmApplied = false;
+        if (newStatus === 'Applied') {
+            if (!confirm('Mark this job as Applied? Only confirm after you have submitted the application.')) {
+                loadAllData();
+                return;
+            }
+            confirmApplied = true;
+        }
         showProgress(`Updating Job #${jobId} status to '${newStatus}'...`, 30);
         fetch('/api/jobs/update-status', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({job_id: parseInt(jobId), status: newStatus})
+            body: JSON.stringify({
+                job_id: parseInt(jobId),
+                status: newStatus,
+                confirm_applied: confirmApplied
+            })
         })
-        .then(res => res.json())
+        .then(async res => {
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                throw new Error(data.error || `HTTP ${res.status}`);
+            }
+            return data;
+        })
         .then(data => {
             if (data.status === 'success') {
                 finishProgress(`Status updated to '${newStatus}'`, true);
@@ -3323,6 +3479,7 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
         .catch(err => {
             finishProgress('Failed updating status', false);
             alert('❌ Failed updating status: ' + err);
+            loadAllData();
         });
     }
 
@@ -3781,9 +3938,59 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
     """HTTP Request Handler serving Web Console dashboard, JSON APIs, and command runner."""
 
     def _set_cors_headers(self) -> None:
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "*")
+        origin = self.headers.get("Origin")
+        allowed = cors_allow_origin(origin)
+        if allowed:
+            self.send_header("Access-Control-Allow-Origin", allowed)
+            self.send_header("Vary", "Origin")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header(
+                "Access-Control-Allow-Headers",
+                f"Content-Type, {TOKEN_HEADER}, {ROLE_HEADER}",
+            )
+
+    def _request_headers_dict(self) -> dict[str, str]:
+        return {str(k): str(v) for k, v in self.headers.items()}
+
+    def _send_json(self, status: int, payload: dict[str, Any]) -> None:
+        body = json.dumps(payload).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self._set_cors_headers()
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _authorize_api(self, url_path: str) -> bool:
+        """Return False if the request was rejected (response already sent)."""
+        headers = self._request_headers_dict()
+        if requires_console_token(url_path):
+            token = extract_request_token(headers)
+            if not is_valid_console_token(token):
+                self._send_json(
+                    403,
+                    {
+                        "error": (
+                            f"Missing or invalid {TOKEN_HEADER}. "
+                            "Set WEB_CONSOLE_TOKEN or use the token from data/web_console_token."
+                        )
+                    },
+                )
+                return False
+        if requires_admin_role(url_path):
+            role = extract_request_role(headers)
+            if role != "admin":
+                self._send_json(
+                    403,
+                    {
+                        "error": (
+                            f"Admin module required for this endpoint "
+                            f"(send {ROLE_HEADER}: admin)."
+                        )
+                    },
+                )
+                return False
+        return True
 
     def do_OPTIONS(self) -> None:
         try:
@@ -3799,12 +4006,15 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
         query_params = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
 
         try:
+            if not self._authorize_api(url_path):
+                return
+
             if url_path in ("/", "/dashboard", "/cheat-sheet", "/index.html"):
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self._set_cors_headers()
                 self.end_headers()
-                self.wfile.write(HTML_APP_TEMPLATE.encode("utf-8"))
+                self.wfile.write(render_app_html().encode("utf-8"))
 
             elif url_path == "/capture":
                 self.send_response(200)
@@ -4093,11 +4303,20 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
         body = self.rfile.read(content_length).decode("utf-8", errors="replace") if content_length > 0 else "{}"
 
         try:
+            if not self._authorize_api(url_path):
+                return
+
             if url_path == "/api/run-command":
                 data = json.loads(body)
                 cmd_name = data.get("command") or "help"
                 args = data.get("args") or []
-                res = execute_cli_command(cmd_name, [str(a) for a in args])
+                role = extract_request_role(self._request_headers_dict())
+                try:
+                    assert_admin_cli_allowed(str(cmd_name), role)
+                    res = run_allowlisted_cli(str(cmd_name), [str(a) for a in args])
+                except PermissionError as exc:
+                    self._send_json(403, {"success": False, "error": str(exc), "exit_code": 403})
+                    return
 
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
@@ -4584,34 +4803,48 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
                 data = json.loads(body)
                 job_id = int(data.get("job_id", 0))
                 new_status = str(data.get("status") or "Saved")
+                confirm_applied = bool(data.get("confirm_applied", False))
 
                 settings = get_settings()
                 SessionLocal = init_db(settings.database_path)
                 session = SessionLocal()
                 try:
-                    update_status(session, job_id, new_status, confirm_applied=True)
+                    update_status(session, job_id, new_status, confirm_applied=confirm_applied)
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json")
                     self._set_cors_headers()
                     self.end_headers()
                     self.wfile.write(json.dumps({"status": "success", "job_id": job_id, "new_status": new_status}).encode("utf-8"))
+                except PermissionError as exc:
+                    self._send_json(403, {"error": str(exc)})
+                except LookupError as exc:
+                    self._send_json(404, {"error": str(exc)})
                 finally:
                     session.close()
 
             elif url_path == "/api/db/query":
                 data = json.loads(body)
-                sql_query = data.get("query") or "SELECT 1;"
+                try:
+                    sql_query = validate_readonly_sql(data.get("query") or "")
+                except ValueError as exc:
+                    self._send_json(400, {"success": False, "error": str(exc)})
+                    return
                 settings = get_settings()
                 engine = create_db_engine(settings.database_path)
                 with engine.connect() as conn:
                     res = conn.execute(text(sql_query))
-                    if res.returns_rows:
-                        cols = list(res.keys())
-                        raw_rows = res.fetchall()
-                        rows = [dict(zip(cols, [str(v) if isinstance(v, (datetime, date)) else v for v in r])) for r in raw_rows]
-                        payload = {"success": True, "columns": cols, "rows": rows}
-                    else:
-                        payload = {"success": True, "message": "Query executed successfully."}
+                    cols = list(res.keys())
+                    raw_rows = res.fetchall()
+                    rows = [
+                        dict(
+                            zip(
+                                cols,
+                                [str(v) if isinstance(v, (datetime, date)) else v for v in r],
+                            )
+                        )
+                        for r in raw_rows
+                    ]
+                    payload = {"success": True, "columns": cols, "rows": rows}
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self._set_cors_headers()
@@ -4671,6 +4904,12 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
                     session.close()
 
             elif url_path == "/api/console-settings":
+                if extract_request_role(self._request_headers_dict()) != "admin":
+                    self._send_json(
+                        403,
+                        {"error": f"Admin module required to change console settings (send {ROLE_HEADER}: admin)."},
+                    )
+                    return
                 data = json.loads(body)
                 settings = get_settings()
                 saved = save_web_console_settings(
@@ -4814,8 +5053,15 @@ class _ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
 
 def start_web_dashboard_server(host: str = "127.0.0.1", port: int = 8000) -> HTTPServer:
     """Start local web console and HTTP capture server on localhost."""
+    # Ensure token exists before serving privileged APIs.
+    token = resolve_console_token()
     server = _ThreadingHTTPServer((host, port), WebConsoleRequestHandler)
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
     logger.info("Local Web Console running on http://%s:%d/", host, port)
+    logger.info(
+        "Privileged APIs require %s (token length %d). CORS is loopback-only; SQL console is SELECT-only.",
+        TOKEN_HEADER,
+        len(token),
+    )
     return server

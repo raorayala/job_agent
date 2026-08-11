@@ -23,6 +23,210 @@ logger = get_logger(__name__)
 
 _BULLET_RE = re.compile(r"^[\u2022\-\*\u25CF\u25E6]\s*(.+)$")
 _WORD_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.#/-]{1,}")
+_URL_RE = re.compile(
+    r"(?i)\b(?:https?://|www\.)\S+|"
+    r"\b[\w.-]+\.(?:com|net|org|io|co|edu|gov|info|biz|us)(?:/\S*)?"
+)
+_EMAIL_ADDR_RE = re.compile(r"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b")
+_BOILERPLATE_RE = re.compile(
+    r"(?i)\b(?:"
+    r"don'?t miss these jobs?|"
+    r"click here to apply|"
+    r"view(?:\s+this)?\s+job|"
+    r"apply(?:\s+now)?|"
+    r"unsubscribe|"
+    r"view in browser|"
+    r"you(?:'re| are) receiving this|"
+    r"manage (?:email )?preferences|"
+    r"privacy policy|"
+    r"equal opportunity employer|"
+    r"affirmative action|"
+    r"all qualified applicants"
+    r")\b[^.!?\n]*[.!?]?"
+)
+_REPEATED_CHAR_RE = re.compile(r"(.)\1{3,}")
+_TRACKING_TOKEN_RE = re.compile(r"(?i)^(?=[a-z0-9]*\d)[a-z0-9]{10,}$")
+_LEVEL_TOKEN_RE = re.compile(r"(?i)^(?:level|lvl)_?\d*$")
+
+# Short/tech tokens that should survive length and pattern filters.
+TECH_TOKEN_ALLOWLIST = {
+    "c", "c++", "c#", "go", "r", "js", "ts", "py", "sql", "aws", "gcp", "azure",
+    "ci", "cd", "ci/cd", "sre", "ml", "ai", "ui", "ux", "api", "sdk", "ide",
+    "k8s", "eks", "ecs", "etl", "elt", "orm", "rest", "grpc", "ssl",
+    "tls", "vpn", "dns", "tcp", "udp", "db", "nosql", "nlp", "llm", "rag",
+    "qa", "sdet", "git", "svn", "npm", "pip", "jvm", "jdk", "jpa", "jdbc",
+    "css", "html", "xml", "json", "yaml", "toml", "bash", "zsh", "ios", "android",
+    "dotnet", ".net", "node", "react", "vue", "angular", "kafka", "redis", "mongo",
+    "postgres", "mysql", "oracle", "snowflake", "databricks", "spark", "hadoop",
+    "terraform", "ansible", "docker", "kubernetes", "linux", "unix", "python",
+    "java", "scala", "kotlin", "rust", "ruby", "php", "swift", "typescript",
+    "javascript", "golang", "fastapi", "django", "flask", "spring", "rails",
+}
+
+_ROMAN_NUMERALS = {
+    "i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x", "xi", "xii",
+    "xiii", "xiv", "xv",
+}
+
+# Generic English + HR/benefits + job-board/noise terms excluded from ATS gaps.
+ATS_STOP_WORDS = {
+    # English function words
+    "and", "the", "for", "with", "you", "our", "will", "are", "this", "that", "from",
+    "have", "your", "able", "work", "team", "role", "job", "jobs", "years", "experience",
+    "including", "using", "required", "preferred", "strong", "must", "should",
+    "about", "into", "such", "across", "within", "other", "more", "than", "over",
+    "into", "their", "they", "them", "who", "what", "when", "where", "which", "while",
+    "also", "any", "all", "can", "may", "not", "but", "per", "via", "etc", "new",
+    "well", "based", "related", "looking", "join", "please", "click", "here", "apply",
+    "view", "miss", "these", "those", "make", "sure", "best", "great", "good",
+    # Job level / roman / title noise
+    "sr", "jr", "snr", "jnr", "mid", "level", "lvl", "senior", "junior", "staff",
+    "principal", "lead", "intern", "internship", "fulltime", "parttime", "contract",
+    # HR / benefits / legal boilerplate
+    "insurance", "leave", "match", "401k", "401", "paid", "pto", "health", "medical",
+    "vision", "dental", "background", "equal", "opportunity", "employer", "benefits",
+    "vacation", "sick", "bonus", "salary", "compensation", "retirement", "disability",
+    "parental", "maternity", "paternity", "holiday", "holidays", "perks", "wellness",
+    "stipend", "reimbursement", "eoe", "eeoc", "affirmative", "action", "diversity",
+    "inclusion", "equity", "belonging", "accommodation", "disability", "veteran",
+    "status", "race", "gender", "religion", "orientation", "identity", "protected",
+    "qualified", "applicants", "receive", "consideration", "without", "regard",
+    "flexible", "remote", "hybrid", "onsite", "relocation", "sponsorship", "visa",
+    "unlimited", "time", "off", "package", "competitive", "commensurate",
+    # Job boards / tracking / contact chrome
+    "indeed", "glassdoor", "ziprecruiter", "linkedin", "dice", "monster", "lever",
+    "greenhouse", "workday", "taleo", "icims", "smartrecruiters", "com", "www",
+    "http", "https", "mailto", "email", "phone", "contact", "unsubscribe", "browser",
+    "preferences", "privacy", "policy", "cts", "utm", "tracking",
+}
+
+
+def sanitize_job_description_for_keywords(text: str) -> str:
+    """Strip URLs, emails, and recruiting/email boilerplate before keyword mining."""
+    cleaned = text or ""
+    cleaned = _URL_RE.sub(" ", cleaned)
+    cleaned = _EMAIL_ADDR_RE.sub(" ", cleaned)
+    cleaned = _BOILERPLATE_RE.sub(" ", cleaned)
+    # Drop common personalized openers like "Name, don't miss..."
+    cleaned = re.sub(r"(?im)^[A-Z][A-Za-z'’.-]{1,30},\s+", " ", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    return cleaned.strip()
+
+
+def is_actionable_ats_keyword(token: str) -> bool:
+    """True when a token is a plausible technical skill / competency for gap analysis."""
+    raw = (token or "").strip()
+    if not raw:
+        return False
+    key = raw.lower()
+
+    if key in TECH_TOKEN_ALLOWLIST or raw in TECH_TOKEN_ALLOWLIST:
+        return True
+    if any(ch in raw for ch in "+#/") and len(key) >= 2 and key not in ATS_STOP_WORDS:
+        return True
+
+    if key in ATS_STOP_WORDS:
+        return False
+    if key in _ROMAN_NUMERALS or re.fullmatch(r"[ivxlcdm]+", key):
+        return False
+    if len(key) < 3:
+        return False
+    if _LEVEL_TOKEN_RE.fullmatch(key) or key in {"sr", "jr", "snr", "jnr"}:
+        return False
+    if re.search(r"\.(?:com|net|org|io|co|edu|gov)\b", key) or key.endswith(
+        (".com", ".net", ".org", ".io")
+    ):
+        return False
+    if _REPEATED_CHAR_RE.search(key):
+        return False
+    if _TRACKING_TOKEN_RE.fullmatch(key):
+        return False
+    # Reject bare version-ish tokens like v3 / l2 unless allowlisted.
+    if re.fullmatch(r"[a-z]\d{1,3}", key):
+        return False
+    return True
+
+
+def filter_ats_keywords(terms: list[str] | tuple[str, ...]) -> list[str]:
+    """Dedupe and drop non-actionable ATS terms while preserving order."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for term in terms:
+        clean = (term or "").strip()
+        if not clean:
+            continue
+        key = clean.lower()
+        if key in seen or not is_actionable_ats_keyword(clean):
+            continue
+        seen.add(key)
+        out.append(clean)
+    return out
+
+
+def _skill_in_text(skill: str, text: str) -> bool:
+    clean = skill.strip()
+    if not clean or not text:
+        return False
+    pattern = re.compile(r"\b" + re.escape(clean) + r"\b", re.IGNORECASE)
+    return bool(pattern.search(text))
+
+
+def extract_jd_keywords(job_description: str, *, limit: int = 25) -> list[tuple[str, int]]:
+    """Rank high-frequency technical-looking tokens from a job description."""
+    cleaned = sanitize_job_description_for_keywords(job_description or "")
+    counts: dict[str, int] = {}
+    originals: dict[str, str] = {}
+    for token in _WORD_RE.findall(cleaned):
+        if not is_actionable_ats_keyword(token):
+            continue
+        key = token.lower()
+        counts[key] = counts.get(key, 0) + 1
+        # Prefer display form with technical punctuation / common casing.
+        prev = originals.get(key)
+        if prev is None or any(ch in token for ch in "+#./") or (
+            token[0].isupper() and not prev[0].isupper()
+        ):
+            originals[key] = token
+    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    return [(originals.get(term, term), freq) for term, freq in ranked[:limit]]
+
+
+def compute_keyword_gap(
+    job: ParsedJob,
+    resume_text: str,
+    match: MatchExplanation | None = None,
+) -> tuple[list[str], list[str], float]:
+    """Return (matched_keywords, gap_keywords, readiness_score 0-100)."""
+    jd = f"{job.title} {job.company} {job.description}"
+    resume_norm = normalize_text(resume_text)
+    ranked = extract_jd_keywords(jd, limit=30)
+    matched: list[str] = []
+    gaps: list[str] = []
+
+    for term, _freq in ranked:
+        if _skill_in_text(term, resume_norm) or term.lower() in resume_norm:
+            matched.append(term)
+        else:
+            gaps.append(term)
+
+    if match:
+        for skill in filter_ats_keywords(match.matched_skills):
+            if skill.lower() not in {m.lower() for m in matched}:
+                matched.append(skill)
+        for skill in filter_ats_keywords(match.missing_skills):
+            # Missing from profile overlap; still a gap if absent from resume
+            if not _skill_in_text(skill, resume_norm):
+                if skill.lower() not in {g.lower() for g in gaps}:
+                    gaps.append(skill)
+
+    matched = filter_ats_keywords(matched)
+    gaps = filter_ats_keywords(gaps)
+
+    total = max(len(matched) + len(gaps), 1)
+    readiness = round(100.0 * len(matched) / total, 1)
+    if match is not None:
+        readiness = round((readiness * 0.4) + (float(match.score) * 0.6), 1)
+    return matched[:20], gaps[:20], readiness
 
 
 @dataclass
@@ -133,69 +337,6 @@ def _extract_bullets(resume_text: str) -> list[str]:
     return bullets
 
 
-def _skill_in_text(skill: str, text: str) -> bool:
-    clean = skill.strip()
-    if not clean or not text:
-        return False
-    pattern = re.compile(r"\b" + re.escape(clean) + r"\b", re.IGNORECASE)
-    return bool(pattern.search(text))
-
-
-def extract_jd_keywords(job_description: str, *, limit: int = 25) -> list[tuple[str, int]]:
-    """Rank high-frequency technical-looking tokens from a job description."""
-    stop = {
-        "and", "the", "for", "with", "you", "our", "will", "are", "this", "that", "from",
-        "have", "your", "able", "work", "team", "role", "job", "years", "experience",
-        "including", "using", "required", "preferred", "strong", "must", "should",
-        "about", "into", "such", "across", "within", "other", "more", "than", "over",
-    }
-    counts: dict[str, int] = {}
-    for token in _WORD_RE.findall(job_description or ""):
-        key = token.lower()
-        if key in stop or len(key) < 2:
-            continue
-        # Prefer technical/multi-case tokens and known skill-like words
-        if token[0].isupper() or any(ch in token for ch in "+#./") or key.isalpha():
-            counts[key] = counts.get(key, 0) + 1
-    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
-    return ranked[:limit]
-
-
-def compute_keyword_gap(
-    job: ParsedJob,
-    resume_text: str,
-    match: MatchExplanation | None = None,
-) -> tuple[list[str], list[str], float]:
-    """Return (matched_keywords, gap_keywords, readiness_score 0-100)."""
-    jd = f"{job.title} {job.company} {job.description}"
-    resume_norm = normalize_text(resume_text)
-    ranked = extract_jd_keywords(jd, limit=30)
-    matched: list[str] = []
-    gaps: list[str] = []
-
-    for term, _freq in ranked:
-        if _skill_in_text(term, resume_norm) or term in resume_norm:
-            matched.append(term)
-        else:
-            gaps.append(term)
-
-    if match:
-        for skill in match.matched_skills:
-            if skill.lower() not in {m.lower() for m in matched}:
-                matched.append(skill)
-        for skill in match.missing_skills:
-            # Missing from profile overlap; still a gap if absent from resume
-            if not _skill_in_text(skill, resume_norm):
-                if skill.lower() not in {g.lower() for g in gaps}:
-                    gaps.append(skill)
-
-    total = max(len(matched) + len(gaps), 1)
-    readiness = round(100.0 * len(matched) / total, 1)
-    if match is not None:
-        readiness = round((readiness * 0.4) + (float(match.score) * 0.6), 1)
-    return matched[:20], gaps[:20], readiness
-
-
 def _rule_based_suggestions(
     job: ParsedJob,
     match: MatchExplanation,
@@ -205,6 +346,7 @@ def _rule_based_suggestions(
     suggestions: list[OptimizeSuggestion] = []
     bullets = _extract_bullets(resume_text)
     resume_norm = normalize_text(resume_text)
+    gaps = filter_ats_keywords(gaps)
 
     # Keyword inserts: only for gaps already present somewhere in resume (truthful weave)
     weaveable = [g for g in gaps if _skill_in_text(g, resume_norm)][:5]
@@ -318,15 +460,19 @@ def _try_ollama_suggestions(
         for item in items[:12]:
             if not isinstance(item, dict):
                 continue
+            kind = str(item.get("kind") or "bullet_rewrite")
+            keyword = str(item.get("keyword") or "").strip()
+            if kind == "keyword_insert" and keyword and not is_actionable_ats_keyword(keyword):
+                continue
             out.append(
                 OptimizeSuggestion(
                     id=str(uuid.uuid4()),
-                    kind=str(item.get("kind") or "bullet_rewrite"),
+                    kind=kind,
                     status="pending",
                     original_text=str(item.get("original_text") or ""),
                     suggested_text=str(item.get("suggested_text") or ""),
                     rationale=str(item.get("rationale") or "AI suggestion — review for accuracy."),
-                    keyword=str(item.get("keyword") or ""),
+                    keyword=keyword,
                     target_section=str(item.get("target_section") or ""),
                 )
             )
@@ -358,6 +504,17 @@ def generate_optimize_suggestions(
         advisory = [s for s in suggestions if s.suggested_text.startswith("[CONFIRM BEFORE ADDING]")]
         suggestions = ollama_items + advisory
         source = "hybrid" if suggestions else "ollama"
+
+    # Final guard: never surface stop-word / noise keyword inserts in the UI.
+    cleaned_suggestions: list[OptimizeSuggestion] = []
+    for suggestion in suggestions:
+        if suggestion.kind == "keyword_insert" and suggestion.keyword:
+            if not is_actionable_ats_keyword(suggestion.keyword):
+                continue
+        cleaned_suggestions.append(suggestion)
+    suggestions = cleaned_suggestions
+    gaps = filter_ats_keywords(gaps)
+    matched = filter_ats_keywords(matched)
 
     bundle = OptimizeBundle(
         job_id=job_id,

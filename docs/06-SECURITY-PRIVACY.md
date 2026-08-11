@@ -84,7 +84,13 @@ Recommendation: keep `LLM_PROVIDER=none` unless you accept third-party processin
 
 - Binds to `127.0.0.1` only (`http://localhost:8000/`) — not exposed to the network
 - Bookmarklet install status (`Mark as Installed`) is stored in browser `localStorage` only; the server cannot verify Chrome bookmark bar state
-- No authentication layer on the Web Console — intended for single-user local use on a trusted workstation
+- **Local API token**: privileged routes (`/api/db/*`, `/api/run-command`, `/api/console-settings`) require header `X-Console-Token`. Set `WEB_CONSOLE_TOKEN` in `.env`, or let the server auto-create `data/web_console_token` (gitignored). The dashboard injects the token into same-origin page fetches.
+- **Role gate**: DB explorer requires `X-Console-Role: admin`. Writing `/api/console-settings` also requires admin. Destructive CLI commands (`cleanup`, `backup`, `setup`, `seed-demo`, `test`, `purge-data`) are blocked in User module.
+- **Command allowlist**: `/api/run-command` only runs known `python -m job_agent` subcommands — not arbitrary shell.
+- **SQL console**: `/api/db/query` is read-only (`SELECT` / `WITH` only); stacked statements and write keywords are rejected.
+- **CORS**: never `*`. Loopback origins (`http://127.0.0.1`, `http://localhost`) may be reflected; other origins get no ACAO header.
+- User vs Admin module switch remains a UX partition; the token + role + allowlists are the security boundary for powerful APIs.
+- Marking Kanban status `Applied` requires explicit `confirm_applied=true` (browser confirm dialog), matching CLI `--confirm` friction.
 
 ## 10. Compliance notes
 

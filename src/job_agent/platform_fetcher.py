@@ -209,10 +209,77 @@ def fetch_ziprecruiter_jobs(query: str, location: str = "Remote", limit: int = D
     return jobs[:limit]
 
 
-def fetch_generic_platform_jobs(platform: str, query: str, location: str = "Remote", limit: int = DEFAULT_LIMIT_PER_PLATFORM) -> list[ParsedJob]:
+def fetch_indeed_jobs(query: str, location: str = "Remote", limit: int = DEFAULT_LIMIT_PER_PLATFORM) -> list[ParsedJob]:
+    """Fetch Indeed listings via public RSS (more reliable than HTML scrape when bot walls appear)."""
+    jobs: list[ParsedJob] = []
+    limit = min(limit, MAX_LIMIT_PER_PLATFORM)
+    q_enc = urllib.parse.quote(query)
+    loc_enc = urllib.parse.quote(location)
+    rss_url = f"https://www.indeed.com/rss?q={q_enc}&l={loc_enc}"
+
+    try:
+        req = urllib.request.Request(rss_url, headers={"User-Agent": USER_AGENT})
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            xml_text = resp.read().decode("utf-8", errors="ignore")
+
+        soup = BeautifulSoup(xml_text, "lxml-xml")
+        for item in soup.find_all("item"):
+            title = (item.title.get_text(strip=True) if item.title else "") or ""
+            link = (item.link.get_text(strip=True) if item.link else "") or ""
+            desc = (item.description.get_text(strip=True) if item.description else "") or ""
+            # Indeed often encodes company in title: "Role - Company - Location"
+            company = "Indeed Employer"
+            parts = [p.strip() for p in re.split(r"\s+[-|]\s+", title) if p.strip()]
+            if len(parts) >= 2:
+                title, company = parts[0], parts[1]
+            if not title or not link:
+                continue
+            jobs.append(
+                ParsedJob(
+                    title=title,
+                    company=company,
+                    location=location,
+                    job_url=link,
+                    description=desc or f"Indeed listing for {title}",
+                    source_platform="indeed",
+                )
+            )
+            if len(jobs) >= limit:
+                break
+    except Exception as exc:
+        logger.warning("Indeed RSS search failed: %s", exc)
+
+    if len(jobs) < limit:
+        # Supplement with JSON-LD from the HTML search page when RSS is sparse.
+        try:
+            html_jobs = fetch_generic_platform_jobs(
+                "indeed", query=query, location=location, limit=limit, allow_anchor_fallback=False
+            )
+            seen = {j.job_url for j in jobs}
+            for job in html_jobs:
+                if job.job_url in seen:
+                    continue
+                jobs.append(job)
+                if len(jobs) >= limit:
+                    break
+        except Exception:
+            pass
+
+    return jobs[:limit]
+
+
+def fetch_generic_platform_jobs(
+    platform: str,
+    query: str,
+    location: str = "Remote",
+    limit: int = DEFAULT_LIMIT_PER_PLATFORM,
+    *,
+    allow_anchor_fallback: bool = True,
+) -> list[ParsedJob]:
     """
-    Search platform helper covering Indeed, LinkedIn, Glassdoor, Monster, CareerBuilder,
-    SimplyHired, Wellfound, and Google Jobs using RSS/Atom/JSON-LD feeds or search URLs.
+    Best-effort HTML/JSON-LD scrape for boards without a dedicated adapter.
+
+    Never invents synthetic listings when blocked — returns an empty list instead.
     """
     jobs: list[ParsedJob] = []
     limit = min(limit, MAX_LIMIT_PER_PLATFORM)
@@ -227,37 +294,44 @@ def fetch_generic_platform_jobs(platform: str, query: str, location: str = "Remo
             html = resp.read().decode("utf-8", errors="ignore")
 
         parsed_json_ld = _parse_json_ld_job(html, fallback_url=target_url)
-        if parsed_json_ld:
+        if parsed_json_ld and parsed_json_ld.title:
             jobs.append(parsed_json_ld)
 
-        # Fallback anchor parsing
-        soup = BeautifulSoup(html, "lxml")
-        for h in soup.find_all(["h1", "h2", "h3", "a"]):
-            t_text = h.get_text(strip=True)
-            if t_text and query.lower() in t_text.lower() and len(t_text) < 100:
-                jobs.append(ParsedJob(
-                    title=t_text,
-                    company=f"{platform.capitalize()} Company",
-                    location=location,
-                    job_url=target_url,
-                    description=f"Discovered listing via {platform.capitalize()} search for {query}.",
-                    source_platform=platform,
-                ))
+        if allow_anchor_fallback and len(jobs) < limit:
+            soup = BeautifulSoup(html, "lxml")
+            seen_urls: set[str] = {j.job_url for j in jobs if j.job_url}
+            for anchor in soup.find_all("a", href=True):
+                href = str(anchor.get("href") or "")
+                t_text = anchor.get_text(strip=True)
+                if not t_text or len(t_text) < 4 or len(t_text) > 120:
+                    continue
+                if query.lower() not in t_text.lower():
+                    continue
+                # Require a concrete job-detail style path — never reuse the search URL.
+                lower_href = href.lower()
+                if not any(
+                    marker in lower_href
+                    for marker in ("/job/", "/jobs/", "/viewjob", "/rc/clk", "/job-listing", "/positions/")
+                ):
+                    continue
+                full_url = href if href.startswith("http") else urllib.parse.urljoin(target_url, href)
+                if full_url in seen_urls or full_url.rstrip("/") == target_url.rstrip("/"):
+                    continue
+                seen_urls.add(full_url)
+                jobs.append(
+                    ParsedJob(
+                        title=t_text,
+                        company="Unknown",
+                        location=location,
+                        job_url=full_url,
+                        description=f"Listing discovered via {platform} search for {query}.",
+                        source_platform=platform,
+                    )
+                )
                 if len(jobs) >= limit:
                     break
     except Exception as exc:
         logger.debug("Platform %s search returned zero or encountered block (%s)", platform, exc)
-
-    # If direct scraper was blocked by bot protection, return 1 clean structured candidate job
-    if not jobs:
-        jobs.append(ParsedJob(
-            title=f"{query} ({platform.capitalize()} Match)",
-            company=f"Top {platform.capitalize()} Partner",
-            location=location,
-            job_url=target_url,
-            description=f"Automated search result from {platform.capitalize()} for position '{query}'. Posted within last 14 days.",
-            source_platform=platform,
-        ))
 
     return jobs[:limit]
 
@@ -364,12 +438,14 @@ def _fetch_jobs_for_platform(
     location: str,
     limit: int,
 ) -> tuple[list[ParsedJob], str | None]:
-    """Fetch listings from one platform. Returns (jobs, error_message)."""
+    """Fetch listings from one platform. Returns (jobs, error_message). Never fabricates jobs."""
     try:
         if plat_clean == "dice":
             return fetch_dice_jobs(query=query, location=location, limit=limit), None
         if plat_clean == "ziprecruiter":
             return fetch_ziprecruiter_jobs(query=query, location=location, limit=limit), None
+        if plat_clean == "indeed":
+            return fetch_indeed_jobs(query=query, location=location, limit=limit), None
         if plat_clean in TOP_10_PLATFORMS:
             return fetch_generic_platform_jobs(plat_clean, query=query, location=location, limit=limit), None
         return [], f"Unsupported platform '{plat_clean}'"

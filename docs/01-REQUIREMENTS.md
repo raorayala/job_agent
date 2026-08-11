@@ -163,7 +163,7 @@ ZipRecruiter, Indeed, Glassdoor, Dice, Lensa — configured in `config.yaml` via
 - [x] Artifacts land under Desktop/Jobs Applied
 - [x] System runs with `LLM_PROVIDER=none`
 - [x] Web Console provides platform search, health panel, demo seed, and job edit
-- [x] 63 automated tests pass (unit, API, Playwright E2E)
+- [x] 81+ automated unit/API tests pass (plus Playwright E2E when browsers installed)
 
 ## 9. Current fulfillment status (v0.1.0)
 
@@ -177,4 +177,4 @@ ZipRecruiter, Indeed, Glassdoor, Dice, Lensa — configured in `config.yaml` via
 | Web Application Console (not Streamlit) | **Done** |
 | Top 10 platform adapters with selectable checkboxes | **Done** |
 | System health, demo seed, job edit, auto-analyze | **Done** |
-| 63 automated tests (unit, API, browser E2E) | **Done** |
+| 81+ automated tests (unit, API; browser E2E optional) | **Done** |

@@ -53,23 +53,26 @@ pytest --cov=job_agent --cov-report=term-missing
 | HTTP API | `tests/test_web_dashboard.py` | REST endpoints without a browser |
 | Browser E2E | `tests/e2e/` | Playwright in **visible Google Chrome**: admin/user mode, tabs, demo seed, discovery, capture, CLI runner |
 
-## 4. Current test map (65 tests)
+## 4. Current test map (81+ unit/API tests)
 
 | File | Covers |
 |------|--------|
 | `tests/test_config.py` | Profile mapping, YAML load, Settings paths |
 | `tests/test_database.py` | Schema create, job CRUD, processed emails |
+| `tests/test_database_fks.py` | Child-table FK integrity / cascade |
 | `tests/test_application_tracker.py` | Applied confirmation gate; status updates |
 | `tests/test_job_normalizer.py` | URL/company/text normalization |
 | `tests/test_document_exporter.py` | Filename + folder conventions |
 | `tests/test_matcher.py` | Scoring, exclusions, recommendations |
 | `tests/test_email_parser.py` | HTML parsing, skill extraction |
-| `tests/test_platform_fetcher.py` | Platform search, `SearchImportResult` |
+| `tests/test_platform_fetcher.py` | Platform search, no synthetic fallback jobs |
 | `tests/test_web_dashboard.py` | HTTP API, stats/health, seed-demo, capture, DB explorer |
+| `tests/test_web_security.py` | Token CORS SQL allowlist helpers |
 | `tests/test_demo_health.py` | Demo seed + system health |
 | `tests/test_cleanup_service.py` | Full purge including `activity_logs` |
 | `tests/test_backup_service.py` | Backup, restore, purge |
 | `tests/test_review_first_workflow.py` | Browser launcher, config validation |
+| `tests/test_resume_optimize.py` | ATS technical keyword gap filtering |
 | `tests/e2e/test_web_console_ui.py` | Playwright browser E2E: admin/user mode, dashboard, tabs, demo seed, capture |
 | `tests/e2e/test_guided_user_flow.py` | Paced guided walkthrough (excluded from default run; use `--guided`) |
 

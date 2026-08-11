@@ -10,6 +10,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     Float,
+    ForeignKey,
     Index,
     Integer,
     String,
@@ -126,7 +127,9 @@ class ContactRecord(Base):
     __tablename__ = "contacts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    job_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    job_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("jobs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     name: Mapped[str] = mapped_column(String(200))
     role: Mapped[str | None] = mapped_column(String(200), nullable=True)
     company: Mapped[str | None] = mapped_column(String(200), nullable=True)
@@ -143,7 +146,9 @@ class InterviewRecord(Base):
     __tablename__ = "interviews"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    job_id: Mapped[int] = mapped_column(Integer)
+    job_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("jobs.id", ondelete="CASCADE"), index=True
+    )
     interview_date: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     interview_type: Mapped[str] = mapped_column(String(100), default="Screening")
     participants: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -173,7 +178,9 @@ class ActivityLogRecord(Base):
     __tablename__ = "activity_logs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    job_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    job_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("jobs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     event_type: Mapped[str] = mapped_column(String(50))  # discovery, import, analysis, draft, approval, status_change
     title: Mapped[str] = mapped_column(String(300))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -194,8 +201,121 @@ def create_db_engine(db_path: str | Path) -> Engine:
     return engine
 
 
+def _table_has_fk_to_jobs(conn: Any, table_name: str) -> bool:
+    rows = conn.execute(text(f"PRAGMA foreign_key_list({table_name})")).fetchall()
+    return any(str(row[2]).lower() == "jobs" for row in rows)
+
+
+def _rebuild_table_with_fk(
+    conn: Any,
+    *,
+    table_name: str,
+    create_sql: str,
+    copy_columns: str,
+) -> None:
+    """Recreate a SQLite table with FK constraints (SQLite cannot ADD FK in-place)."""
+    conn.execute(text("PRAGMA foreign_keys=OFF"))
+    conn.execute(text(create_sql))
+    conn.execute(
+        text(
+            f"INSERT INTO {table_name}_new ({copy_columns}) "
+            f"SELECT {copy_columns} FROM {table_name}"
+        )
+    )
+    conn.execute(text(f"DROP TABLE {table_name}"))
+    conn.execute(text(f"ALTER TABLE {table_name}_new RENAME TO {table_name}"))
+    conn.execute(text("PRAGMA foreign_keys=ON"))
+
+
+def _migrate_child_fk_tables(conn: Any) -> None:
+    """Ensure contacts/interviews/activity_logs declare FKs to jobs."""
+    tables = {
+        name for (name,) in conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table'")
+        ).fetchall()
+    }
+
+    if "contacts" in tables and not _table_has_fk_to_jobs(conn, "contacts"):
+        # Null out orphan job_ids before enforcing FK.
+        conn.execute(
+            text(
+                "UPDATE contacts SET job_id = NULL WHERE job_id IS NOT NULL "
+                "AND job_id NOT IN (SELECT id FROM jobs)"
+            )
+        )
+        _rebuild_table_with_fk(
+            conn,
+            table_name="contacts",
+            create_sql="""
+                CREATE TABLE contacts_new (
+                    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    job_id INTEGER,
+                    name VARCHAR(200) NOT NULL,
+                    role VARCHAR(200),
+                    company VARCHAR(200),
+                    email VARCHAR(200),
+                    phone VARCHAR(50),
+                    linkedin_url VARCHAR(500),
+                    notes TEXT,
+                    created_at DATETIME NOT NULL,
+                    FOREIGN KEY(job_id) REFERENCES jobs (id) ON DELETE SET NULL
+                );
+            """,
+            copy_columns="id, job_id, name, role, company, email, phone, linkedin_url, notes, created_at",
+        )
+
+    if "interviews" in tables and not _table_has_fk_to_jobs(conn, "interviews"):
+        conn.execute(
+            text(
+                "DELETE FROM interviews WHERE job_id NOT IN (SELECT id FROM jobs)"
+            )
+        )
+        _rebuild_table_with_fk(
+            conn,
+            table_name="interviews",
+            create_sql="""
+                CREATE TABLE interviews_new (
+                    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    job_id INTEGER NOT NULL,
+                    interview_date DATETIME NOT NULL,
+                    interview_type VARCHAR(100) NOT NULL,
+                    participants VARCHAR(500),
+                    notes TEXT,
+                    prep_tasks TEXT,
+                    created_at DATETIME NOT NULL,
+                    FOREIGN KEY(job_id) REFERENCES jobs (id) ON DELETE CASCADE
+                );
+            """,
+            copy_columns="id, job_id, interview_date, interview_type, participants, notes, prep_tasks, created_at",
+        )
+
+    if "activity_logs" in tables and not _table_has_fk_to_jobs(conn, "activity_logs"):
+        conn.execute(
+            text(
+                "UPDATE activity_logs SET job_id = NULL WHERE job_id IS NOT NULL "
+                "AND job_id NOT IN (SELECT id FROM jobs)"
+            )
+        )
+        _rebuild_table_with_fk(
+            conn,
+            table_name="activity_logs",
+            create_sql="""
+                CREATE TABLE activity_logs_new (
+                    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    job_id INTEGER,
+                    event_type VARCHAR(50) NOT NULL,
+                    title VARCHAR(300) NOT NULL,
+                    description TEXT,
+                    created_at DATETIME NOT NULL,
+                    FOREIGN KEY(job_id) REFERENCES jobs (id) ON DELETE SET NULL
+                );
+            """,
+            copy_columns="id, job_id, event_type, title, description, created_at",
+        )
+
+
 def _migrate_sqlite_schema(engine: Engine) -> None:
-    """Migrate legacy SQLite schema and ensure new columns exist."""
+    """Migrate legacy SQLite schema and ensure new columns / FKs exist."""
     try:
         with engine.begin() as conn:
             res = conn.execute(text("SELECT sql FROM sqlite_master WHERE tbl_name='jobs' AND type='table'")).fetchone()
@@ -269,8 +389,11 @@ def _migrate_sqlite_schema(engine: Engine) -> None:
             for col_name, col_def in missing_additions:
                 if col_name not in existing_cols:
                     conn.execute(text(f"ALTER TABLE jobs ADD COLUMN {col_name} {col_def};"))
-    except Exception:
-        pass
+
+            _migrate_child_fk_tables(conn)
+    except Exception as exc:
+        logger.exception("SQLite schema migration failed: %s", exc)
+        raise
 
 
 def init_db(db_path: str | Path) -> sessionmaker[Session]:
