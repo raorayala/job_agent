@@ -51,8 +51,15 @@ def web_base_url(e2e_database_path: Path, e2e_config_path: Path) -> str:
 
 @pytest.fixture(autouse=True)
 def isolate_console_mode_storage(page) -> None:
-    """Each E2E test starts in User Mode without prior browser state."""
-    page.add_init_script("localStorage.removeItem('job_agent_console_mode');")
+    """Each E2E test starts at the module gate without prior browser state."""
+    page.add_init_script(
+        """
+        localStorage.removeItem('job_agent_console_mode');
+        localStorage.removeItem('job_agent_module_entered');
+        localStorage.removeItem('job_agent_active_job_id');
+        localStorage.removeItem('job_agent_show_experimental_platforms');
+        """
+    )
 
 
 @pytest.fixture(scope="session")

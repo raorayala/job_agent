@@ -142,7 +142,7 @@ Set environment variables in `.env`:
 
 ## Tests
 
-Run the full test suite (63 tests). **Web Console tests run in visible Google Chrome** by default:
+Run the full test suite (81+ unit/API tests; E2E when browsers installed). **Web Console tests run in visible Google Chrome** by default:
 
 ```powershell
 pip install -e ".[dev]"

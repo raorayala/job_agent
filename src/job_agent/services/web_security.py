@@ -27,7 +27,6 @@ PRIVILEGED_API_PREFIXES = (
 # DB explorer / destructive console APIs also require admin role header.
 ADMIN_API_PREFIXES = (
     "/api/db/",
-    "/api/console-settings",
 )
 
 # CLI commands that must not run from User module even with a valid token.

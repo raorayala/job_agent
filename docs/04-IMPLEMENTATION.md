@@ -68,7 +68,7 @@ All Milestones 1–8 are **complete**. No remaining "Planned" or "Streamlit" wor
 | Logging | `logging_config.setup_logging()` + structured Python `logger.info` for HTTP requests |
 | SOLID | Single Responsibility, Open/Closed adapters, Interface Segregation, Dependency Inversion |
 | Optimization | Flyweight LRU caching for regex and similarity; B-Tree SQLite indexes |
-| Tests | pytest (**53 passing** unit/integration tests) |
+| Tests | pytest (**81+ passing** unit/integration/API tests; E2E optional) |
 | Secrets | Never hardcode; never commit `.env`, `credentials.json`, or `token.json` |
 
 ## 5. Key algorithms (implemented)

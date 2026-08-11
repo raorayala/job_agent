@@ -12,7 +12,7 @@ This folder is the project document set for **job-agent**: a local-first Python 
 | [04 — Implementation](04-IMPLEMENTATION.md) | Module responsibilities, milestone status |
 | [05 — Data Model](05-DATA-MODEL.md) | SQLite schema, statuses, config/profile fields |
 | [06 — Security & Privacy](06-SECURITY-PRIVACY.md) | OAuth, secrets, PII handling |
-| [07 — Testing](07-TESTING.md) | Test strategy, 53-test suite |
+| [07 — Testing](07-TESTING.md) | Test strategy, 81+ unit/API tests |
 | [08 — Operations & Deployment](08-OPERATIONS-DEPLOYMENT.md) | Local install, Gmail setup, scheduling, backups |
 | [09 — Roadmap](09-ROADMAP.md) | Completed milestones and future enhancements |
 | [10 — User Guide](10-USER-GUIDE.md) | Day-to-day usage for the job seeker |

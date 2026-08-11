@@ -1207,9 +1207,14 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
                     <p class="text-muted small mb-3">Select the job sites you want to search, then click <strong>Find Jobs Now</strong>. Each selected platform returns up to <strong>3 recent jobs</strong> (posted in the last 14 days). The top 3 recommended platforms are pre-selected.</p>
                     <div class="d-flex flex-wrap gap-2 mb-3">
                         <button type="button" class="btn btn-sm btn-outline-primary" onclick="selectRecommendedPlatforms()"><i class="bi bi-star-fill"></i> Top 3 Recommended</button>
-                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="selectAllPlatforms(true)"><i class="bi bi-check2-all"></i> Select All</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="selectAllPlatforms(true)"><i class="bi bi-check2-all"></i> Select Visible</button>
                         <button type="button" class="btn btn-sm btn-outline-secondary" onclick="selectAllPlatforms(false)"><i class="bi bi-x-lg"></i> Clear All</button>
+                        <div class="form-check form-switch ms-auto">
+                            <input class="form-check-input" type="checkbox" id="show-experimental-platforms" onchange="toggleExperimentalPlatforms(this.checked)">
+                            <label class="form-check-label small" for="show-experimental-platforms">Show experimental boards</label>
+                        </div>
                     </div>
+                    <p class="small text-muted mb-2" id="experimental-platforms-hint">Experimental boards (LinkedIn, Glassdoor, …) often return zero when blocked — leave them off unless you need them.</p>
                     <div class="row row-cols-2 row-cols-md-5 g-2 mb-3" id="top-10-platforms-grid">
                         <!-- Platform checkboxes generated dynamically -->
                     </div>
@@ -2083,10 +2088,23 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
     const BOOKMARKLET_INSTALLED_KEY = 'job_agent_bookmarklet_installed';
     const CONSOLE_MODE_KEY = 'job_agent_console_mode';
     const MODULE_ENTERED_KEY = 'job_agent_module_entered';
+    const ACTIVE_JOB_KEY = 'job_agent_active_job_id';
+    const SHOW_EXPERIMENTAL_PLATFORMS_KEY = 'job_agent_show_experimental_platforms';
     const USER_TAB_IDS = ['dashboard-tab', 'discovery-tab', 'review-tab', 'auto-apply-tab', 'linkedin-tab', 'kanban-tab', 'cls-tab'];
     const ADMIN_TAB_IDS = ['admin-home-tab', 'db-tab', 'profile-tab', 'cheatsheet-tab'];
     let currentOptimizeBundle = null;
     let currentAutoApplyJobId = null;
+
+    function getActiveJobId() {
+        return localStorage.getItem(ACTIVE_JOB_KEY) || currentReviewJobId || currentAutoApplyJobId || '';
+    }
+
+    function setActiveJobId(jobId) {
+        const id = jobId ? String(jobId) : '';
+        if (id) localStorage.setItem(ACTIVE_JOB_KEY, id);
+        else localStorage.removeItem(ACTIVE_JOB_KEY);
+        currentReviewJobId = id || null;
+    }
 
     function showModuleGate() {
         document.body.classList.add('module-gate-open');
@@ -2145,18 +2163,28 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
     }
 
     function initConsoleMode() {
-        showModuleGate();
-        const stored = localStorage.getItem(CONSOLE_MODE_KEY);
-        if (stored === 'admin' || stored === 'user') {
-            applyConsoleMode(stored, false);
+        const storedMode = localStorage.getItem(CONSOLE_MODE_KEY);
+        const entered = localStorage.getItem(MODULE_ENTERED_KEY) === '1';
+
+        const finish = (mode) => {
+            const normalized = mode === 'admin' ? 'admin' : 'user';
+            applyConsoleMode(normalized, false);
+            if (entered) {
+                document.body.classList.remove('module-gate-open');
+                navigateTo(normalized === 'admin' ? 'admin-home-tab' : 'dashboard-tab');
+            } else {
+                showModuleGate();
+            }
+        };
+
+        if (storedMode === 'admin' || storedMode === 'user') {
+            finish(storedMode);
             return;
         }
         fetch('/api/console-settings')
             .then(res => res.json())
-            .then(settings => {
-                applyConsoleMode(settings.default_mode || 'user', false);
-            })
-            .catch(() => applyConsoleMode('user', false));
+            .then(settings => finish(settings.default_mode || 'user'))
+            .catch(() => finish('user'));
     }
 
     function navigateTo(tabId) {
@@ -2352,7 +2380,25 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
     }
 
     function selectAllPlatforms(checked) {
-        document.querySelectorAll('.platform-checkbox').forEach(cb => { cb.checked = checked; });
+        document.querySelectorAll('.platform-checkbox').forEach(cb => {
+            const card = cb.closest('.platform-card-wrap');
+            if (card && card.style.display === 'none') return;
+            cb.checked = checked;
+        });
+        updatePlatformSelectionUI();
+    }
+
+    function toggleExperimentalPlatforms(show) {
+        localStorage.setItem(SHOW_EXPERIMENTAL_PLATFORMS_KEY, show ? '1' : '0');
+        document.querySelectorAll('.platform-card-wrap[data-tier="experimental"]').forEach(el => {
+            el.style.display = show ? '' : 'none';
+            if (!show) {
+                const cb = el.querySelector('.platform-checkbox');
+                if (cb) cb.checked = false;
+            }
+        });
+        const hint = document.getElementById('experimental-platforms-hint');
+        if (hint) hint.style.display = show ? 'none' : '';
         updatePlatformSelectionUI();
     }
 
@@ -2361,21 +2407,26 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
         if (!grid) return;
         grid.innerHTML = '';
         TOP_10.forEach(p => {
-            const checked = DEFAULT_PLATFORMS.includes(p) ? 'checked' : '';
+            const isRecommended = DEFAULT_PLATFORMS.includes(p);
+            const checked = isRecommended ? 'checked' : '';
             const label = formatPlatformLabel(p);
-            const tierBadge = DEFAULT_PLATFORMS.includes(p)
+            const tier = isRecommended ? 'recommended' : 'experimental';
+            const tierBadge = isRecommended
                 ? '<span class="badge bg-success fs-9 mt-1">Recommended</span>'
                 : '<span class="badge bg-secondary fs-9 mt-1">Experimental</span>';
             grid.innerHTML += `
-                <div class="col">
-                    <label class="platform-card shadow-sm d-block mb-0 ${DEFAULT_PLATFORMS.includes(p) ? 'is-selected' : ''}" for="platform-cb-${p}">
+                <div class="col platform-card-wrap" data-tier="${tier}">
+                    <label class="platform-card shadow-sm d-block mb-0 ${isRecommended ? 'is-selected' : ''}" for="platform-cb-${p}">
                         <input type="checkbox" class="form-check-input platform-checkbox" id="platform-cb-${p}" value="${p}" ${checked} onchange="updatePlatformSelectionUI()">
                         <div class="fw-bold text-dark fs-8">${label}</div>
                         ${tierBadge}
                     </label>
                 </div>`;
         });
-        updatePlatformSelectionUI();
+        const showExperimental = localStorage.getItem(SHOW_EXPERIMENTAL_PLATFORMS_KEY) === '1';
+        const toggle = document.getElementById('show-experimental-platforms');
+        if (toggle) toggle.checked = showExperimental;
+        toggleExperimentalPlatforms(showExperimental);
     }
 
     function loadAllData() {
@@ -2838,23 +2889,36 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
     function populateReviewJobSelect(jobs) {
         const sel = document.getElementById('review-job-select');
         if (!sel) return;
+        const previous = getActiveJobId();
         sel.innerHTML = '<option value="">Select a job from list...</option>';
         (jobs || []).forEach(j => {
             sel.innerHTML += `<option value="${j.id}">#${j.id}: ${escapeHtml(j.title)} at ${escapeHtml(j.company)} (${j.status})</option>`;
         });
+        if (previous && Array.from(sel.options).some(o => o.value === String(previous))) {
+            sel.value = String(previous);
+            currentReviewJobId = previous;
+        }
     }
 
     function populateAutoApplyJobSelect(jobs) {
         const sel = document.getElementById('auto-apply-job-select');
         if (!sel) return;
+        const previous = getActiveJobId();
         sel.innerHTML = '<option value="">Select a job...</option>';
         (jobs || []).forEach(j => {
             sel.innerHTML += `<option value="${j.id}">#${j.id}: ${escapeHtml(j.title)} at ${escapeHtml(j.company)} (${j.status})</option>`;
         });
+        if (previous && Array.from(sel.options).some(o => o.value === String(previous))) {
+            sel.value = String(previous);
+            if (typeof loadAutoApplyEligibility === 'function') {
+                loadAutoApplyEligibility(previous);
+            }
+        }
     }
 
     function loadAutoApplyEligibility(jobId) {
         currentAutoApplyJobId = jobId || null;
+        if (jobId) setActiveJobId(jobId);
         const box = document.getElementById('auto-apply-eligibility');
         const btn = document.getElementById('btn-launch-auto-apply');
         const btnMark = document.getElementById('btn-launch-auto-apply-mark');
@@ -2987,6 +3051,7 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
     }
 
     function selectForReview(jobId) {
+        setActiveJobId(jobId);
         document.getElementById('review-job-select').value = jobId;
         loadJobForReview(jobId);
         switchTab('review-tab');
@@ -2997,7 +3062,7 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
             document.getElementById('resume-review-details').style.display = 'none';
             return;
         }
-        currentReviewJobId = jobId;
+        setActiveJobId(jobId);
         document.getElementById('resume-review-details').style.display = 'block';
 
         fetch(`/api/draft/get?job_id=${jobId}`)
@@ -3316,12 +3381,24 @@ HTML_APP_TEMPLATE = r"""<!DOCTYPE html>
                 const count = data.jobs_recorded != null ? data.jobs_recorded : 0;
                 const searched = (data.platforms_searched || selectedPlatforms).map(formatPlatformLabel).join(', ');
                 finishProgress(`Search complete! Discovered ${count} jobs.`, true);
-                if (count === 0) {
-                    alert(`No jobs imported from selected platforms.\n\nSee "Last Platform Search Results" for per-site status.\n\nTip: Use Dice, ZipRecruiter, Indeed (recommended), Load Demo Jobs, or Import URL.`);
-                } else {
-                    alert(`✅ Platform Search Complete!\n\nDiscovered ${count} jobs from:\n${searched}\n\nRunning score analyzer next...`);
-                }
-                loadAllData();
+                return loadAllData().then(() => {
+                    if (count === 0) {
+                        alert(`No jobs imported from selected platforms.\n\nSee "Last Platform Search Results" for per-site status.\n\nTip: Use Dice, ZipRecruiter, Indeed (recommended), Load Demo Jobs, or Import URL.`);
+                        return;
+                    }
+                    // Prefer highest match score for the next review step.
+                    return fetchWithTimeout('/api/jobs').then(res => res.json()).then(jobs => {
+                        const ranked = (jobs || []).slice().sort((a, b) => (Number(b.match_score) || 0) - (Number(a.match_score) || 0));
+                        const top = ranked[0];
+                        if (top && top.id) {
+                            setActiveJobId(top.id);
+                            selectForReview(top.id);
+                            finishProgress(`Search complete! Opening Review for #${top.id} (${Math.round(Number(top.match_score) || 0)} match).`, true);
+                        } else {
+                            navigateTo('review-tab');
+                        }
+                    }).catch(() => navigateTo('review-tab'));
+                });
             };
             if ((data.jobs_recorded || 0) > 0) {
                 showProgress('Running score analyzer on discovered jobs...', 70);
@@ -4827,6 +4904,12 @@ class WebConsoleRequestHandler(BaseHTTPRequestHandler):
                     session.close()
 
             elif url_path == "/api/console-settings":
+                if extract_request_role(self._request_headers_dict()) != "admin":
+                    self._send_json(
+                        403,
+                        {"error": f"Admin module required to change console settings (send {ROLE_HEADER}: admin)."},
+                    )
+                    return
                 data = json.loads(body)
                 settings = get_settings()
                 saved = save_web_console_settings(

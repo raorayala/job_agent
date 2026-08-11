@@ -9,7 +9,7 @@ Server uses `ThreadingHTTPServer` so long platform searches do not block stats/r
 | Header | Required for | Notes |
 |--------|--------------|-------|
 | `X-Console-Token` | `/api/db/*`, `/api/run-command`, `/api/console-settings` | From `WEB_CONSOLE_TOKEN` or `data/web_console_token` |
-| `X-Console-Role: admin` | `/api/db/*`, `/api/console-settings`, destructive CLI via `/api/run-command` | Dashboard sets this in Admin module |
+| `X-Console-Role: admin` | `/api/db/*`, POST `/api/console-settings`, destructive CLI via `/api/run-command` | Dashboard sets this in Admin module |
 
 `/api/db/query` accepts **read-only** SQL only. `/api/run-command` is allowlisted to known CLI commands.
 

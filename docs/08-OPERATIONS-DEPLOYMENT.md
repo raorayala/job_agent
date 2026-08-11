@@ -32,7 +32,7 @@ Dev tools (tests):
 
 ```powershell
 pip install -e ".[dev]"
-pytest -q    # expect 53 passed
+pytest -q -m "not e2e"    # expect 81+ passed
 ```
 
 Helper scripts: `scripts\dev_setup.ps1`, `scripts\purge_database.py`

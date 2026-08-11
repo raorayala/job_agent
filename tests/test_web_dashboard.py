@@ -71,6 +71,8 @@ def test_get_index_html(web_server):
         assert TEST_TOKEN in html
         assert "X-Console-Token" in html
         assert "confirm_applied" in html
+        assert "show-experimental-platforms" in html
+        assert "job_agent_module_entered" in html or "MODULE_ENTERED_KEY" in html
 
 
 def test_get_api_console_settings(web_server):
